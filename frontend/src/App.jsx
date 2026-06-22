@@ -35,7 +35,7 @@ function App() {
         content: msg.content
       }))
 
-      const response = await axios.post('http://localhost:8000/chat', {
+      const response = await axios.post('https://live-ai-backend.onrender.com/chat', {
         message: userMessage,
         history: history
       })
