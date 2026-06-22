@@ -8,6 +8,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
   const messagesEndRef = useRef(null)
+  
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -35,7 +37,7 @@ function App() {
         content: msg.content
       }))
 
-      const response = await axios.post('https://live-ai-backend.onrender.com/chat', {
+      const response = await axios.post(`${API_URL}/chat`, {
         message: userMessage,
         history: history
       })
