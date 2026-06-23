@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
+import ReactMarkdown from 'react-markdown'
 import './App.css'
 
 function App() {
@@ -26,12 +27,10 @@ function App() {
     const userMessage = input.trim()
     setInput('')
 
-    // Add user message to UI
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setLoading(true)
 
     try {
-      // Prepare history for backend
       const history = messages.map(msg => ({
         role: msg.role,
         content: msg.content
@@ -44,7 +43,6 @@ function App() {
 
       setSearching(response.data.is_searching)
 
-      // Add assistant message to UI
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.reply
@@ -55,7 +53,7 @@ function App() {
       console.error('Error:', error)
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please check if the backend server is running on localhost:8000.'
+        content: 'Sorry, I encountered an error. Please check if the backend server is running.'
       }])
       setSearching(false)
     } finally {
@@ -90,7 +88,11 @@ function App() {
             className={`message-wrapper ${message.role}`}
           >
             <div className={`message ${message.role}`}>
-              {message.content}
+              {message.role === 'assistant' ? (
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              ) : (
+                message.content
+              )}
             </div>
           </div>
         ))}
