@@ -1,6 +1,9 @@
 import os
 import bcrypt
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+import io
+import base64
+from PIL import Image
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -118,6 +121,10 @@ class ChatRequest(BaseModel):
     language_instruction: Optional[str] = ""
     detected_language: Optional[str] = "en"
     session_id: Optional[str] = None
+    file_context: Optional[str] = None
+    file_type: Optional[str] = None
+    file_name: Optional[str] = None
+    mime_type: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -389,12 +396,23 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     is_searching = should_search(user_message)
     search_results = await run_search(user_message) if is_searching else ""
 
+    # Build user content (handle attached file)
+    if request.file_type == "image":
+        user_content = [
+            {"type": "image_url", "image_url": {"url": f"data:{request.mime_type};base64,{request.file_context}"}},
+            {"type": "text", "text": user_message or "What is in this image?"}
+        ]
+    elif request.file_type == "text" and request.file_context:
+        user_content = f"[Attached file: {request.file_name}]\n\n{request.file_context}\n\n---\nUser's question: {user_message}"
+    else:
+        user_content = user_message
+
     final_prompt = f"""{system_prompt}
 
 Conversation history:
 {conversation_text}
 
-User's latest question: {user_message}"""
+User's latest question: {user_message if isinstance(user_content, list) else user_content}"""
 
     if search_results:
         final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
@@ -406,9 +424,13 @@ User's latest question: {user_message}"""
         try:
             yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
 
+            groq_messages = [{"role": "user", "content": final_prompt}]
+            if request.file_type == "image":
+                groq_messages = [{"role": "user", "content": user_content}]
+
             stream = groq_client.chat.completions.create(
                 model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": final_prompt}],
+                messages=groq_messages,
                 temperature=0.7,
                 max_tokens=1024,
                 stream=True,
@@ -465,7 +487,12 @@ async def chat_guest_stream(request: ChatRequest):
     is_searching = should_search(user_message)
     search_results = await run_search(user_message) if is_searching else ""
 
-    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
+    if request.file_type == "text" and request.file_context:
+        file_prefix = f"[Attached file: {request.file_name}]\n\n{request.file_context}\n\n---\nUser's question: "
+    else:
+        file_prefix = ""
+
+    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {file_prefix}{user_message}"
     if search_results:
         final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
     if lang_instruction:
@@ -543,7 +570,76 @@ async def delete_session(session_id: str, current_user=Depends(get_current_user)
         return {"success": True}
     except Exception as e:
         return {"error": str(e)}
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    MAX_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
 
+    filename = file.filename.lower()
+    extracted = ""
+
+    try:
+        if filename.endswith(".pdf"):
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            for page in reader.pages:
+                extracted += page.extract_text() or ""
+            if not extracted.strip():
+                raise HTTPException(status_code=422, detail="Could not extract text from this PDF. It may be image-based.")
+
+        elif filename.endswith((".txt", ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".csv", ".md", ".html", ".css")):
+            extracted = content.decode("utf-8", errors="ignore")
+
+        elif filename.endswith(".docx"):
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            extracted = "\n".join([para.text for para in doc.paragraphs])
+
+        elif filename.endswith(".xlsx"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+            for sheet in wb.worksheets:
+                extracted += f"\n[Sheet: {sheet.title}]\n"
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = "\t".join([str(c) if c is not None else "" for c in row])
+                    extracted += row_text + "\n"
+
+        elif filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+            b64 = base64.b64encode(content).decode("utf-8")
+            mime = (
+                "image/jpeg" if filename.endswith((".jpg", ".jpeg")) else
+                "image/png" if filename.endswith(".png") else
+                "image/webp" if filename.endswith(".webp") else "image/gif"
+            )
+            return {
+                "type": "image",
+                "filename": file.filename,
+                "mime_type": mime,
+                "b64": b64,
+                "size": len(content),
+            }
+
+        else:
+            raise HTTPException(status_code=415, detail=f"Unsupported file type: .{filename.split('.')[-1]}")
+
+        if len(extracted) > 12000:
+            extracted = extracted[:12000] + "\n\n[... file truncated to fit context ...]"
+
+        return {
+            "type": "text",
+            "filename": file.filename,
+            "content": extracted.strip(),
+            "size": len(content),
+            "chars": len(extracted),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+    
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
