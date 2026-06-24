@@ -449,8 +449,8 @@ async def chat_guest_stream(request: ChatRequest):
     lang_instruction = request.language_instruction or ""
     session_id = request.session_id or str(uuid.uuid4())
     guest_message_counts[session_id] += 1
-if guest_message_counts[session_id] > GUEST_LIMIT:
-    raise HTTPException(status_code=429,
+    if guest_message_counts[session_id] > GUEST_LIMIT:
+     raise HTTPException(status_code=429,
         detail="🔒 Guest limit reached (10 messages)! Sign up free → get 30/hour and 70 per 12 hours.")
 
 
@@ -491,7 +491,7 @@ if guest_message_counts[session_id] > GUEST_LIMIT:
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return FastAPIStreamingResponse(
+        return FastAPIStreamingResponse(
         generate(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
