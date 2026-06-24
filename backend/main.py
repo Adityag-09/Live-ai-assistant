@@ -23,10 +23,10 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 
 # MongoDB setup
+# Change these lines:
 mongo_client = AsyncIOMotorClient(MONGODB_URL) if MONGODB_URL else None
-db = mongo_client["live_ai_assistant"] if mongo_client else None
-chats_collection = db["chats"] if db else None
-
+db = mongo_client["live_ai_assistant"] if mongo_client is not None else None
+chats_collection = db["chats"] if db is not None else None
 app = FastAPI(title="Live AI Assistant")
 
 app.add_middleware(
