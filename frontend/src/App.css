@@ -425,3 +425,51 @@ body {
   font-size: 0.8rem;
   margin-bottom: 0.4rem;
 }
+.export-menu-wrap {
+  position: relative;
+}
+.export-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.export-btn:hover { background: var(--hover); }
+
+.export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.export-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  z-index: 100;
+  min-width: 180px;
+  overflow: hidden;
+}
+.export-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s;
+}
+.export-dropdown button:hover { background: var(--hover); }

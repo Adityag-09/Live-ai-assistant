@@ -413,6 +413,7 @@ export default function App() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const lastUserMessageRef = useRef('')
+  const [showExportMenu, setShowExportMenu] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef(null)
   const [attachedFile, setAttachedFile] = useState(null)
@@ -695,6 +696,71 @@ export default function App() {
   }
   e.target.value = ''
 }
+const exportAsTxt = () => {
+  if (!messages.length) return
+  const lines = messages.map(m => {
+    const role = m.role === 'user' ? 'You' : 'AI Assistant'
+    const time = m.timestamp ? `[${formatTime(m.timestamp)}]` : ''
+    return `${role} ${time}\n${m.content}\n`
+  })
+  const blob = new Blob([lines.join('\n---\n\n')], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `chat-${new Date().toISOString().slice(0,10)}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+  setShowExportMenu(false)
+}
+
+const exportAsPdf = () => {
+  if (!messages.length) return
+  const printWindow = window.open('', '_blank')
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Chat Export</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #111; }
+        h1 { font-size: 1.2rem; border-bottom: 2px solid #333; padding-bottom: 8px; }
+        .msg { margin: 16px 0; padding: 12px 16px; border-radius: 8px; }
+        .user { background: #e8f0fe; text-align: right; }
+        .ai { background: #f5f5f5; }
+        .role { font-weight: bold; font-size: 0.8rem; margin-bottom: 4px; color: #555; }
+        .time { font-size: 0.72rem; color: #999; margin-top: 6px; }
+        pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
+      </style>
+    </head>
+    <body>
+      <h1>💬 Live AI Assistant — Chat Export (${new Date().toLocaleDateString()})</h1>
+      ${messages.map(m => `
+        <div class="msg ${m.role === 'user' ? 'user' : 'ai'}">
+          <div class="role">${m.role === 'user' ? '👤 You' : '🤖 AI Assistant'}</div>
+          <pre>${m.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+          ${m.timestamp ? `<div class="time">${formatTime(m.timestamp)}</div>` : ''}
+        </div>
+      `).join('')}
+    </body>
+    </html>
+  `
+  printWindow.document.write(html)
+  printWindow.document.close()
+  printWindow.focus()
+  setTimeout(() => { printWindow.print(); printWindow.close() }, 500)
+  setShowExportMenu(false)
+}
+
+const copyShareLink = () => {
+  if (!messages.length) return
+  const summary = messages.slice(0, 3).map(m =>
+    `${m.role === 'user' ? 'Q' : 'A'}: ${m.content.slice(0, 80)}`
+  ).join(' | ')
+  const shareText = `Chat on Live AI Assistant:\n${summary}...\n\nhttps://live-ai-frontend.onrender.com`
+  navigator.clipboard.writeText(shareText)
+  alert('Share text copied to clipboard!')
+  setShowExportMenu(false)
+}
   const handleVoiceInput = () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!SpeechRecognition) {
@@ -802,6 +868,27 @@ export default function App() {
               </div>
             </div>
             <div className="header-right">
+              {messages.length > 0 && (
+                <div className="export-menu-wrap">
+                  <button
+                    className="export-btn"
+                    onClick={() => setShowExportMenu(o => !o)}
+                    title="Export / Share"
+                  >
+                    ⬆ Share
+                  </button>
+                  {showExportMenu && (
+                    <>
+                      <div className="export-overlay" onClick={() => setShowExportMenu(false)} />
+                      <div className="export-dropdown">
+                        <button onClick={exportAsTxt}>📄 Download TXT</button>
+                        <button onClick={exportAsPdf}>🖨️ Export as PDF</button>
+                        <button onClick={copyShareLink}>🔗 Copy Share Link</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               {isGuest && (
                 <button className="signin-header-btn" onClick={handleSignIn}>
                   Sign In
