@@ -14,7 +14,39 @@ from jose import JWTError, jwt
 import uuid
 from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 import json
+from collections import defaultdict
+import time
 
+# ── Rate limiting ─────────────────────────────────────────
+rate_limit_store = defaultdict(lambda: {
+    'hourly': [],
+    'half_daily': [],
+})
+guest_message_counts = defaultdict(int)
+HOURLY_LIMIT = 30
+HALF_DAILY_LIMIT = 70
+GUEST_LIMIT = 10
+
+def check_rate_limit(user_id: str):
+    now = time.time()
+    store = rate_limit_store[user_id]
+    store['hourly'] = [t for t in store['hourly'] if now - t < 3600]
+    store['half_daily'] = [t for t in store['half_daily'] if now - t < 43200]
+
+    if len(store['hourly']) >= HOURLY_LIMIT:
+        reset_time = store['hourly'][0] + 3600
+        reset_str = datetime.fromtimestamp(reset_time).strftime('%I:%M %p')
+        raise HTTPException(status_code=429,
+            detail=f"⏳ Hourly limit reached (30/30 messages). Resets at {reset_str}.")
+
+    if len(store['half_daily']) >= HALF_DAILY_LIMIT:
+        reset_time = store['half_daily'][0] + 43200
+        reset_str = datetime.fromtimestamp(reset_time).strftime('%I:%M %p')
+        raise HTTPException(status_code=429,
+            detail=f"🚫 Daily limit reached (70/70 messages). Your credits reset at {reset_str}.")
+
+    store['hourly'].append(now)
+    store['half_daily'].append(now)
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -248,6 +280,10 @@ async def chat_guest(request: ChatRequest) -> ChatResponse:
     history = request.history or []
     lang_instruction = request.language_instruction or ""
     session_id = request.session_id or str(uuid.uuid4())
+    guest_message_counts[session_id] += 1
+    if guest_message_counts[session_id] > GUEST_LIMIT:
+        raise HTTPException(status_code=429,
+            detail="🔒 Guest limit reached (10 messages)! Sign up free → get 30/hour and 70 per 12 hours.")
 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
@@ -285,7 +321,7 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
-
+    check_rate_limit(user_id) 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
@@ -340,6 +376,7 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
+    check_rate_limit(user_id) 
 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
@@ -411,6 +448,11 @@ async def chat_guest_stream(request: ChatRequest):
     history = request.history or []
     lang_instruction = request.language_instruction or ""
     session_id = request.session_id or str(uuid.uuid4())
+    guest_message_counts[session_id] += 1
+if guest_message_counts[session_id] > GUEST_LIMIT:
+    raise HTTPException(status_code=429,
+        detail="🔒 Guest limit reached (10 messages)! Sign up free → get 30/hour and 70 per 12 hours.")
+
 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])

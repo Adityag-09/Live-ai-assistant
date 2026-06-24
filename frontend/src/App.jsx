@@ -514,9 +514,19 @@ export default function App() {
       })
 
       if (!response.ok) {
-        if (response.status === 401) { handleLogout(); return }
-        throw new Error(`Server error: ${response.status}`)
-      }
+  if (response.status === 401) { handleLogout(); return }
+  if (response.status === 429) {
+    const errData = await response.json()
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: errData.detail || '⏳ Rate limit reached. Please wait before sending more messages.',
+      timestamp: new Date().toISOString(),
+    }])
+    setLoading(false)
+    return
+  }
+  throw new Error(`Server error: ${response.status}`)
+}
 
       clearTimeout(wakingTimer)
       setServerWaking(false)
@@ -605,7 +615,8 @@ export default function App() {
           content: '⏳ Server took too long. It may be waking up — please try again in 30 seconds.',
           timestamp: new Date().toISOString(),
         }])
-      } else {
+      } 
+      else {
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: '⚠️ Could not reach the server. Please check your connection.',
