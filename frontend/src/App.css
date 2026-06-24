@@ -308,3 +308,18 @@ body {
 
 /* ── Server waking banner ── */
 .waking-banner { background: rgba(79,143,255,0.1); border: 1px solid rgba(79,143,255,0.2); border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.8rem; color: var(--accent); text-align: center; margin: 0 1.5rem; }
+/* ── Guest mode ── */
+.auth-divider { text-align: center; color: var(--text-dim); font-size: 0.8rem; margin: 0.25rem 0; }
+.guest-btn { width: 100%; padding: 0.7rem; background: transparent; border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.88rem; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+.guest-btn:hover { border-color: var(--accent); background: rgba(79,143,255,0.05); }
+.guest-note { font-size: 0.72rem; color: var(--text-dim); text-align: center; }
+
+.guest-nudge { display: flex; align-items: center; gap: 0.5rem; background: rgba(79,143,255,0.1); border: 1px solid rgba(79,143,255,0.25); border-radius: 10px; padding: 0.75rem 1rem; font-size: 0.82rem; flex-wrap: wrap; }
+.guest-nudge button { background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 0.78rem; padding: 0.3rem 0.7rem; cursor: pointer; margin-left: auto; font-family: inherit; }
+.guest-nudge-dismiss { background: transparent !important; color: var(--text-dim) !important; margin-left: 0 !important; }
+
+.signin-from-sidebar { width: 100%; padding: 0.6rem; background: rgba(79,143,255,0.1); border: 1px solid rgba(79,143,255,0.25); border-radius: 8px; color: var(--accent); font-size: 0.82rem; cursor: pointer; transition: all 0.2s; text-align: center; font-family: inherit; }
+.signin-from-sidebar:hover { background: rgba(79,143,255,0.2); }
+
+.signin-header-btn { padding: 0.4rem 0.9rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: 8px; color: #fff; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+.signin-header-btn:hover { opacity: 0.9; }

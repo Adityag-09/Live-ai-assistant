@@ -5,7 +5,6 @@ import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// ── Language utils ────────────────────────────────────────
 const detectLanguage = (text) => {
   const patterns = {
     hi: /[\u0900-\u097F]/,
@@ -79,12 +78,8 @@ const ALL_SUGGESTIONS = [
 ]
 const SUGGESTIONS = ALL_SUGGESTIONS.sort(() => Math.random() - 0.5).slice(0, 4)
 
-// ── Format timestamp ──────────────────────────────────────
-const formatTime = (date) => {
-  return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
+const formatTime = (date) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-// ── Axios auth helper ─────────────────────────────────────
 const authAxios = (token) => axios.create({
   baseURL: API_URL,
   headers: { Authorization: `Bearer ${token}` },
@@ -142,7 +137,7 @@ function ParticleCanvas({ darkMode }) {
 }
 
 // ── Auth Page ─────────────────────────────────────────────
-function AuthPage({ onAuth, darkMode }) {
+function AuthPage({ onAuth, darkMode, onGuestMode }) {
   const [isLogin, setIsLogin] = useState(true)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -167,18 +162,10 @@ function AuthPage({ onAuth, darkMode }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-
     if (!isLogin) {
-      if (!email.includes('@') || !email.includes('.')) {
-        setError('Please enter a valid email address')
-        return
-      }
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters')
-        return
-      }
+      if (!email.includes('@') || !email.includes('.')) { setError('Please enter a valid email address'); return }
+      if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     }
-
     setLoading(true)
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/signup'
@@ -251,6 +238,12 @@ function AuthPage({ onAuth, darkMode }) {
             {isLogin ? ' Sign Up' : ' Sign In'}
           </button>
         </p>
+
+        <div className="auth-divider">or</div>
+        <button className="guest-btn" onClick={onGuestMode}>
+          Continue as Guest
+        </button>
+        <p className="guest-note">⚠️ Guest chats are not saved</p>
       </div>
     </div>
   )
@@ -287,18 +280,14 @@ function Message({ message, onRegenerate, isLast }) {
           {isUser ? message.content : <ReactMarkdown>{message.content}</ReactMarkdown>}
         </div>
         <div className="msg-footer">
-          {message.timestamp && (
-            <span className="msg-time">{formatTime(message.timestamp)}</span>
-          )}
+          {message.timestamp && <span className="msg-time">{formatTime(message.timestamp)}</span>}
           {!isUser && (
             <div className="msg-actions">
               <button className={`copy-btn ${copied ? 'copy-btn--done' : ''}`} onClick={copyText}>
                 {copied ? '✓ Copied' : '⧉ Copy'}
               </button>
               {isLast && onRegenerate && (
-                <button className="regen-btn" onClick={onRegenerate} title="Regenerate response">
-                  🔄 Retry
-                </button>
+                <button className="regen-btn" onClick={onRegenerate}>🔄 Retry</button>
               )}
             </div>
           )}
@@ -316,7 +305,7 @@ function Message({ message, onRegenerate, isLast }) {
 }
 
 // ── Sidebar ───────────────────────────────────────────────
-function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDeleteSession, user, onLogout, darkMode, setDarkMode, open, setOpen }) {
+function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDeleteSession, user, onLogout, darkMode, setDarkMode, open, setOpen, isGuest, onSignIn }) {
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={() => setOpen(false)} />}
@@ -332,43 +321,56 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
 
         <div className="sidebar-sessions">
           <div className="sidebar-label">Recent Chats</div>
-          {sessions.length === 0 && (
+          {isGuest ? (
+            <div className="sidebar-empty">
+              <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔒</div>
+              <div>Sign in to see history</div>
+              <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', opacity: 0.7 }}>Guest chats are not saved</div>
+            </div>
+          ) : sessions.length === 0 ? (
             <div className="sidebar-empty">
               <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
               <div>No chats yet</div>
               <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', opacity: 0.7 }}>Start a conversation!</div>
             </div>
+          ) : (
+            sessions.map(s => (
+              <div key={s.session_id}
+                className={`session-item ${s.session_id === currentSessionId ? 'session-item--active' : ''}`}
+                onClick={() => { onSelectSession(s.session_id); setOpen(false) }}
+              >
+                <span className="session-title">{s.title || 'Untitled Chat'}</span>
+                <button className="session-delete" onClick={e => { e.stopPropagation(); onDeleteSession(s.session_id) }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </div>
+            ))
           )}
-          {sessions.map(s => (
-            <div key={s.session_id}
-              className={`session-item ${s.session_id === currentSessionId ? 'session-item--active' : ''}`}
-              onClick={() => { onSelectSession(s.session_id); setOpen(false) }}
-            >
-              <span className="session-title">{s.title || 'Untitled Chat'}</span>
-              <button className="session-delete" onClick={e => { e.stopPropagation(); onDeleteSession(s.session_id) }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                </svg>
-              </button>
-            </div>
-          ))}
         </div>
 
         <div className="sidebar-footer">
           <button className="theme-toggle-side" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀️ Light mode' : '🌙 Dark mode'}
           </button>
-          <div className="sidebar-user">
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.name}</div>
-              <div className="sidebar-user-email">{user?.email}</div>
-            </div>
-            <button className="logout-btn" onClick={onLogout} title="Logout">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
+          {isGuest ? (
+            <button className="signin-from-sidebar" onClick={onSignIn}>
+              🔐 Sign in to save history
             </button>
-          </div>
+          ) : (
+            <div className="sidebar-user">
+              <div className="sidebar-user-info">
+                <div className="sidebar-user-name">{user?.name}</div>
+                <div className="sidebar-user-email">{user?.email}</div>
+              </div>
+              <button className="logout-btn" onClick={onLogout} title="Logout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -388,6 +390,9 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [isGuest, setIsGuest] = useState(false)
+  const [guestMessageCount, setGuestMessageCount] = useState(0)
+  const [showNudge, setShowNudge] = useState(true)
   const [serverWaking, setServerWaking] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -418,6 +423,7 @@ export default function App() {
     localStorage.setItem('user', JSON.stringify(newUser))
     setToken(newToken)
     setUser(newUser)
+    setIsGuest(false)
   }
 
   const handleLogout = () => {
@@ -428,6 +434,13 @@ export default function App() {
     setMessages([])
     setSessionId(null)
     setSessions([])
+    setIsGuest(false)
+  }
+
+  const handleSignIn = () => {
+    setIsGuest(false)
+    setMessages([])
+    setSessionId(null)
   }
 
   const handleNewChat = () => {
@@ -440,11 +453,7 @@ export default function App() {
     try {
       const res = await authAxios(token).get(`/history/${sid}`)
       if (res.data.messages) {
-        setMessages(res.data.messages.map(m => ({
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-        })))
+        setMessages(res.data.messages.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp })))
         setSessionId(sid)
       }
     } catch {}
@@ -480,17 +489,26 @@ export default function App() {
     setLoading(true)
     setSearching(false)
 
-    // Show server waking message after 5 seconds
     const wakingTimer = setTimeout(() => setServerWaking(true), 5000)
 
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      const response = await authAxios(token).post('/chat', {
-        message: userMessage, history,
-        language_instruction: langInstruction,
-        detected_language: lang,
-        session_id: sessionId,
-      })
+
+      // Guest uses /chat/guest, logged in uses /chat
+      const response = isGuest
+        ? await axios.post(`${API_URL}/chat/guest`, {
+            message: userMessage, history,
+            language_instruction: langInstruction,
+            detected_language: lang,
+            session_id: sessionId,
+          }, { timeout: 60000 })
+        : await authAxios(token).post('/chat', {
+            message: userMessage, history,
+            language_instruction: langInstruction,
+            detected_language: lang,
+            session_id: sessionId,
+          })
+
       clearTimeout(wakingTimer)
       setServerWaking(false)
       if (response.data.is_searching) setSearching(true)
@@ -501,7 +519,13 @@ export default function App() {
         timestamp: new Date().toISOString(),
       }])
       setSessionId(response.data.session_id)
-      fetchSessions()
+
+      if (isGuest) {
+        setGuestMessageCount(c => c + 1)
+      } else {
+        fetchSessions()
+      }
+
     } catch (err) {
       clearTimeout(wakingTimer)
       setServerWaking(false)
@@ -538,7 +562,14 @@ export default function App() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  if (!token) return <AuthPage onAuth={handleAuth} darkMode={darkMode} />
+  // Show auth page only if no token AND not guest
+  if (!token && !isGuest) return (
+    <AuthPage
+      onAuth={handleAuth}
+      darkMode={darkMode}
+      onGuestMode={() => { setIsGuest(true); setGuestMessageCount(0); setShowNudge(true) }}
+    />
+  )
 
   const showLangHint = detectedLang !== 'en' && input.length > 2
 
@@ -558,6 +589,8 @@ export default function App() {
         setDarkMode={setDarkMode}
         open={sidebarOpen}
         setOpen={setSidebarOpen}
+        isGuest={isGuest}
+        onSignIn={handleSignIn}
       />
 
       <div className="main">
@@ -577,11 +610,18 @@ export default function App() {
                 </div>
                 <div>
                   <div className="header-title">Live AI Assistant</div>
-                  <div className="header-sub">Powered by web search · speaks your language</div>
+                  <div className="header-sub">
+                    {isGuest ? '👤 Guest Mode — chats not saved' : 'Powered by web search · speaks your language'}
+                  </div>
                 </div>
               </div>
             </div>
             <div className="header-right">
+              {isGuest && (
+                <button className="signin-header-btn" onClick={handleSignIn}>
+                  Sign In
+                </button>
+              )}
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
@@ -591,11 +631,24 @@ export default function App() {
         </header>
 
         <main className="messages">
+          {/* Guest nudge after 3 messages */}
+          {isGuest && guestMessageCount >= 3 && showNudge && (
+            <div className="guest-nudge">
+              💾 <strong>Save your chat history</strong> — Sign in to keep your conversations
+              <button onClick={handleSignIn}>Sign In</button>
+              <button className="guest-nudge-dismiss" onClick={() => setShowNudge(false)}>✕</button>
+            </div>
+          )}
+
           {messages.length === 0 && (
             <div className="empty-state">
               <div className="empty-icon">✨</div>
               <h2>Ask me anything</h2>
-              <p>I search the web for real-time answers and reply in your language automatically.</p>
+              <p>
+                {isGuest
+                  ? 'You\'re in guest mode. Sign in to save your chat history!'
+                  : 'I search the web for real-time answers and reply in your language automatically.'}
+              </p>
               <div className="suggestions">
                 {SUGGESTIONS.map((s, i) => (
                   <button key={i} className="suggestion-chip" onClick={() => sendMessage(s.text)}>
@@ -605,6 +658,7 @@ export default function App() {
               </div>
             </div>
           )}
+
           {messages.map((msg, i) => (
             <Message
               key={i}
@@ -613,6 +667,7 @@ export default function App() {
               onRegenerate={msg.role === 'assistant' ? handleRegenerate : null}
             />
           ))}
+
           {loading && (
             <div className="msg-row msg-row--ai">
               <div className="avatar avatar--ai">
@@ -621,13 +676,9 @@ export default function App() {
                 </svg>
               </div>
               <div className="msg-bubble msg-bubble--ai msg-bubble--loading">
-                {serverWaking ? (
-                  <span className="searching-text">⏳ Waking up server...</span>
-                ) : searching ? (
-                  <span className="searching-text">🔍 Searching the web…</span>
-                ) : (
-                  <TypingDots />
-                )}
+                {serverWaking ? <span className="searching-text">⏳ Waking up server...</span>
+                  : searching ? <span className="searching-text">🔍 Searching the web…</span>
+                  : <TypingDots />}
               </div>
             </div>
           )}

@@ -163,6 +163,58 @@ async def login(request: LoginRequest):
 async def get_me(current_user=Depends(get_current_user)):
     return {"id": current_user["_id"], "name": current_user["name"], "email": current_user["email"]}
 
+@app.post("/chat/guest")
+async def chat_guest(request: ChatRequest) -> ChatResponse:
+    """No auth required — history not saved"""
+    user_message = request.message.strip()
+    history = request.history or []
+    lang_instruction = request.language_instruction or ""
+    session_id = request.session_id or str(uuid.uuid4())
+
+    history.append(Message(role="user", content=user_message))
+    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
+
+    system_prompt = SYSTEM_PROMPT
+    if lang_instruction:
+        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
+
+    decision_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}\n\nDo you need to search the web?\nAnswer ONLY 'YES' or 'NO'."
+    decision_response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": decision_prompt}],
+        temperature=0.3, max_tokens=10,
+    )
+    search_decision = decision_response.choices[0].message.content.strip().upper()
+
+    search_results = ""
+    is_searching = "YES" in search_decision
+    if is_searching:
+        try:
+            response = tavily_client.search(query=user_message, max_results=5)
+            if response and "results" in response:
+                search_results = "\n\n".join([
+                    f"Source: {r.get('title','Unknown')}\n{r.get('content','')}"
+                    for r in response["results"]
+                ])
+        except Exception as e:
+            search_results = f"Search error: {str(e)}"
+
+    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
+    if search_results:
+        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
+    if lang_instruction:
+        final_prompt += f"\n\nREMINDER: {lang_instruction}"
+
+    final_response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": final_prompt}],
+        temperature=0.7, max_tokens=1024,
+    )
+    assistant_reply = final_response.choices[0].message.content
+    history.append(Message(role="assistant", content=assistant_reply))
+
+    return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)
+
 # ── System prompt ─────────────────────────────────────────
 SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 
