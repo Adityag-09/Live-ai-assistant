@@ -396,14 +396,20 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     is_searching = should_search(user_message)
     search_results = await run_search(user_message) if is_searching else ""
 
+    # capture request fields before async generator
+    _file_type = request.file_type
+    _file_context = request.file_context
+    _file_name = request.file_name
+    _mime_type = request.mime_type
+
     # Build user content (handle attached file)
-    if request.file_type == "image":
+    if _file_type == "image" and _file_context:
         user_content = [
-            {"type": "image_url", "image_url": {"url": f"data:{request.mime_type};base64,{request.file_context}"}},
+            {"type": "image_url", "image_url": {"url": f"data:{_mime_type};base64,{_file_context}"}},
             {"type": "text", "text": user_message or "What is in this image?"}
         ]
-    elif request.file_type == "text" and request.file_context:
-        user_content = f"[Attached file: {request.file_name}]\n\n{request.file_context}\n\n---\nUser's question: {user_message}"
+    elif _file_type == "text" and _file_context:
+        user_content = f"[Attached file: {_file_name}]\n\n{_file_context}\n\n---\nUser's question: {user_message}"
     else:
         user_content = user_message
 
@@ -424,24 +430,41 @@ User's latest question: {user_message if isinstance(user_content, list) else use
         try:
             yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
 
-            if request.file_type == "image":
-                groq_messages = [{"role": "user", "content": user_content}]
-                vision_model = "llama-3.2-90b-vision-preview"
-            else:
-                groq_messages = [{"role": "user", "content": final_prompt}]
-                vision_model = "llama-3.1-8b-instant"
+            if _file_type == "image" and _file_context:
+                vision_response = groq_client.chat.completions.create(
+                    model="llama-3.2-90b-vision-preview",
+                    messages=[{"role": "user", "content": user_content}],
+                    temperature=0.7,
+                    max_tokens=1024,
+                    stream=False,
+                )
+                vision_reply = vision_response.choices[0].message.content or "I couldn't analyze this image."
+                full_reply = vision_reply
+                yield f"data: {json.dumps({'type': 'chunk', 'content': vision_reply})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+                title = await generate_title(user_message or "Image analysis") if is_new_session else None
+                await save_to_mongo(
+                    session_id=session_id,
+                    user_id=user_id,
+                    user_msg=user_message or "What is in this image?",
+                    assistant_msg=full_reply,
+                    lang=request.detected_language or "en",
+                    title=title
+                )
+                return
 
-            stream = groq_client.chat.completions.create(
-                model=vision_model,
-                messages=groq_messages,
-                temperature=0.7,
-                max_tokens=1024,
-                stream=True,
-            )
+            else:
+                stream = groq_client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": final_prompt}],
+                    temperature=0.7,
+                    max_tokens=1024,
+                    stream=True,
+                )
 
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
+                delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                if delta is not None and delta != "":
                     full_reply += delta
                     yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
