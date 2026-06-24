@@ -259,7 +259,7 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={() => setOpen(false)} />}
-      <aside className={`sidebar ${open ? 'sidebar--open' : ''}`}>
+      <aside className={`sidebar ${!open ? 'sidebar--collapsed' : 'sidebar--open'}`}>
         <div className="sidebar-header">
           <button className="new-chat-btn" onClick={onNewChat}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -321,7 +321,7 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') !== 'light')
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
