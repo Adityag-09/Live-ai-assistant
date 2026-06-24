@@ -477,151 +477,138 @@ export default function App() {
   const sendMessage = async (text) => {
     const userMessage = (text || input).trim()
     if (!userMessage || loading) return
+
     const lang = detectLanguage(userMessage)
     lastUserMessageRef.current = userMessage
     setInput('')
     setDetectedLang('en')
+
     const langInstruction = lang !== 'en'
       ? `The user is writing in ${LANGUAGE_NAMES[lang]}. You MUST reply in ${LANGUAGE_NAMES[lang]} only.`
       : ''
     const timestamp = new Date().toISOString()
+    
     setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp }])
     setLoading(true)
     setSearching(false)
 
-    const sendMessage = async (text) => {
-  const userMessage = (text || input).trim()
-  if (!userMessage || loading) return
-  const lang = detectLanguage(userMessage)
-  lastUserMessageRef.current = userMessage
-  setInput('')
-  setDetectedLang('en')
-  const langInstruction = lang !== 'en'
-    ? `The user is writing in ${LANGUAGE_NAMES[lang]}. You MUST reply in ${LANGUAGE_NAMES[lang]} only.`
-    : ''
-  const timestamp = new Date().toISOString()
-  setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp }])
-  setLoading(true)
-  setSearching(false)
+    const wakingTimer = setTimeout(() => setServerWaking(true), 5000)
 
-  const wakingTimer = setTimeout(() => setServerWaking(true), 5000)
+    try {
+      const history = messages.map(m => ({ role: m.role, content: m.content }))
+      const endpoint = isGuest ? '/chat/guest/stream' : '/chat/stream'
+      const headers = isGuest
+        ? { 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
 
-  try {
-    const history = messages.map(m => ({ role: m.role, content: m.content }))
-    const endpoint = isGuest ? '/chat/guest/stream' : '/chat/stream'
-    const headers = isGuest
-      ? { 'Content-Type': 'application/json' }
-      : { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message: userMessage, 
+          history,
+          language_instruction: langInstruction,
+          detected_language: lang,
+          session_id: sessionId,
+        }),
+      })
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        message: userMessage, history,
-        language_instruction: langInstruction,
-        detected_language: lang,
-        session_id: sessionId,
-      }),
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) { handleLogout(); return }
-      throw new Error(`Server error: ${response.status}`)
-    }
-
-    clearTimeout(wakingTimer)
-    setServerWaking(false)
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let streamingContent = ''
-    let newSessionId = sessionId
-
-    // Add empty AI message to fill in
-    setMessages(prev => [...prev, {
-      role: 'assistant',
-      content: '',
-      detectedLang: lang !== 'en' ? lang : null,
-      timestamp: new Date().toISOString(),
-      streaming: true,
-    }])
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n')
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        try {
-          const data = JSON.parse(line.slice(6))
-
-          if (data.type === 'status') {
-            if (data.is_searching) setSearching(true)
-            if (data.session_id) newSessionId = data.session_id
-          }
-
-          if (data.type === 'chunk') {
-            streamingContent += data.content
-            setMessages(prev => {
-              const updated = [...prev]
-              updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                content: streamingContent,
-              }
-              return updated
-            })
-          }
-
-          if (data.type === 'done') {
-            setSearching(false)
-            if (data.session_id) newSessionId = data.session_id
-            setMessages(prev => {
-              const updated = [...prev]
-              updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                streaming: false,
-              }
-              return updated
-            })
-          }
-
-          if (data.type === 'error') {
-            throw new Error(data.message)
-          }
-        } catch {}
+      if (!response.ok) {
+        if (response.status === 401) { handleLogout(); return }
+        throw new Error(`Server error: ${response.status}`)
       }
-    }
 
-    setSessionId(newSessionId)
-    if (isGuest) setGuestMessageCount(c => c + 1)
-    else fetchSessions()
+      clearTimeout(wakingTimer)
+      setServerWaking(false)
 
-  } catch (err) {
-    clearTimeout(wakingTimer)
-    setServerWaking(false)
-    if (err.message?.includes('401')) handleLogout()
-    else if (err.message?.includes('timeout') || err.name === 'AbortError') {
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let streamingContent = ''
+      let newSessionId = sessionId
+
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '⏳ Server took too long. It may be waking up — please try again in 30 seconds.',
+        content: '',
+        detectedLang: lang !== 'en' ? lang : null,
         timestamp: new Date().toISOString(),
+        streaming: true,
       }])
-    } else {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: '⚠️ Could not reach the server. Please check your connection.',
-        timestamp: new Date().toISOString(),
-      }])
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'status') {
+              if (data.is_searching) setSearching(true)
+              if (data.session_id) newSessionId = data.session_id
+            }
+
+            if (data.type === 'chunk') {
+              streamingContent += data.content
+              setMessages(prev => {
+                const updated = [...prev]
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  content: streamingContent,
+                }
+                return updated
+              })
+            }
+
+            if (data.type === 'done') {
+              setSearching(false)
+              if (data.session_id) newSessionId = data.session_id
+              setMessages(prev => {
+                const updated = [...prev]
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  streaming: false,
+                }
+                return updated
+              })
+            }
+
+            if (data.type === 'error') {
+              throw new Error(data.message)
+            }
+          } catch {}
+        }
+      }
+
+      setSessionId(newSessionId)
+      if (isGuest) setGuestMessageCount(c => c + 1)
+      else fetchSessions()
+
+    } catch (err) {
+      clearTimeout(wakingTimer)
+      setServerWaking(false)
+      if (err.message?.includes('401')) handleLogout()
+      else if (err.message?.includes('timeout') || err.name === 'AbortError') {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⏳ Server took too long. It may be waking up — please try again in 30 seconds.',
+          timestamp: new Date().toISOString(),
+        }])
+      } else {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⚠️ Could not reach the server. Please check your connection.',
+          timestamp: new Date().toISOString(),
+        }])
+      }
+    } finally {
+      setLoading(false)
+      setSearching(false)
+      inputRef.current?.focus()
     }
-  } finally {
-    setLoading(false)
-    setSearching(false)
-    inputRef.current?.focus()
-  }
-}
   }
 
   const handleRegenerate = () => {
@@ -636,7 +623,6 @@ export default function App() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  // Show auth page only if no token AND not guest
   if (!token && !isGuest) return (
     <AuthPage
       onAuth={handleAuth}
@@ -705,7 +691,6 @@ export default function App() {
         </header>
 
         <main className="messages">
-          {/* Guest nudge after 3 messages */}
           {isGuest && guestMessageCount >= 3 && showNudge && (
             <div className="guest-nudge">
               💾 <strong>Save your chat history</strong> — Sign in to keep your conversations
