@@ -23,10 +23,10 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 
 # MongoDB setup
-# Change these lines:
 mongo_client = AsyncIOMotorClient(MONGODB_URL) if MONGODB_URL else None
 db = mongo_client["live_ai_assistant"] if mongo_client is not None else None
 chats_collection = db["chats"] if db is not None else None
+
 app = FastAPI(title="Live AI Assistant")
 
 app.add_middleware(
@@ -46,13 +46,13 @@ class ChatRequest(BaseModel):
     history: List[Message] = []
     language_instruction: Optional[str] = ""
     detected_language: Optional[str] = "en"
-    session_id: Optional[str] = None   # ← new
+    session_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str
     history: List[Message]
     is_searching: bool = False
-    session_id: str                    # ← new
+    session_id: str
 
 SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 
@@ -66,8 +66,7 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 
 
 async def save_to_mongo(session_id: str, user_msg: str, assistant_msg: str, lang: str):
-    """Save each exchange to MongoDB."""
-    if not chats_collection:
+    if chats_collection is None:
         return
     try:
         await chats_collection.update_one(
@@ -100,7 +99,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     user_message = request.message.strip()
     history = request.history or []
     lang_instruction = request.language_instruction or ""
-    session_id = request.session_id or str(uuid.uuid4())  # create new session if none
+    session_id = request.session_id or str(uuid.uuid4())
 
     history.append(Message(role="user", content=user_message))
 
@@ -168,7 +167,6 @@ User's latest question: {user_message}"""
 
     history.append(Message(role="assistant", content=assistant_reply))
 
-    # Save to MongoDB in background
     await save_to_mongo(
         session_id=session_id,
         user_msg=user_message,
@@ -186,8 +184,7 @@ User's latest question: {user_message}"""
 
 @app.get("/history/{session_id}")
 async def get_history(session_id: str):
-    """Get full chat history for a session."""
-    if not chats_collection:
+    if chats_collection is None:
         return {"messages": []}
     try:
         doc = await chats_collection.find_one({"session_id": session_id})
@@ -201,8 +198,7 @@ async def get_history(session_id: str):
 
 @app.get("/sessions")
 async def get_sessions():
-    """Get all chat sessions (for sidebar later)."""
-    if not chats_collection:
+    if chats_collection is None:
         return {"sessions": []}
     try:
         cursor = chats_collection.find(
@@ -220,7 +216,7 @@ async def get_sessions():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "mongodb": "connected" if mongo_client else "not configured"}
+    return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
 
 
 if __name__ == "__main__":
