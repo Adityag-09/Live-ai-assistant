@@ -328,8 +328,7 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
-    check_rate_limit(user_id) 
-    print(f"DEBUG ROUTE: file_type={request.file_type} file_context_len={len(request.file_context) if request.file_context else 0} mime={request.mime_type}")
+    check_rate_limit(user_id)
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
@@ -384,7 +383,7 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
-    check_rate_limit(user_id) 
+    check_rate_limit(user_id)
 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
@@ -393,33 +392,28 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     if lang_instruction:
         system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
 
-    # Keyword-based search decision — no extra API call!
     is_searching = should_search(user_message)
     search_results = await run_search(user_message) if is_searching else ""
 
-    # capture request fields before async generator
-    _file_type = request.file_type
-    _file_context = request.file_context
-    _file_name = request.file_name
-    _mime_type = request.mime_type
+    # Capture all request fields as plain local variables
+    _file_type = request.file_type or ""
+    _file_context = request.file_context or ""
+    _file_name = request.file_name or ""
+    _mime_type = request.mime_type or ""
+    _detected_language = request.detected_language or "en"
 
-    # Build user content (handle attached file)
-    if _file_type == "image" and _file_context:
-        user_content = [
-            {"type": "image_url", "image_url": {"url": f"data:{_mime_type};base64,{_file_context}"}},
-            {"type": "text", "text": user_message or "What is in this image?"}
-        ]
-    elif _file_type == "text" and _file_context:
-        user_content = f"[Attached file: {_file_name}]\n\n{_file_context}\n\n---\nUser's question: {user_message}"
+    # Build prompts
+    if _file_type == "text" and _file_context:
+        text_with_file = f"[Attached file: {_file_name}]\n\n{_file_context}\n\n---\nUser's question: {user_message}"
     else:
-        user_content = user_message
+        text_with_file = user_message
 
     final_prompt = f"""{system_prompt}
 
 Conversation history:
 {conversation_text}
 
-User's latest question: {user_message if isinstance(user_content, list) else user_content}"""
+User's latest question: {text_with_file}"""
 
     if search_results:
         final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
@@ -432,32 +426,38 @@ User's latest question: {user_message if isinstance(user_content, list) else use
             yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
 
             if _file_type == "image" and _file_context:
+                # Vision: non-streaming
+                image_messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:{_mime_type};base64,{_file_context}"}},
+                            {"type": "text", "text": user_message if user_message else "What is in this image? Describe in detail."}
+                        ]
+                    }
+                ]
                 vision_response = groq_client.chat.completions.create(
                     model="llama-3.2-90b-vision-preview",
-                    messages=[{"role": "user", "content": user_content}],
+                    messages=image_messages,
                     temperature=0.7,
                     max_tokens=1024,
                     stream=False,
                 )
-                vision_reply = vision_response.choices[0].message.content
-                print(f"DEBUG vision_reply: {repr(vision_reply)}")
-                if not vision_reply:
-                    vision_reply = "I couldn't analyze this image."
-                full_reply = vision_reply
-                yield f"data: {json.dumps({'type': 'chunk', 'content': vision_reply})}\n\n"
+                full_reply = vision_response.choices[0].message.content or "I couldn't analyze this image."
+                yield f"data: {json.dumps({'type': 'chunk', 'content': full_reply})}\n\n"
                 title = await generate_title(user_message or "Image analysis") if is_new_session else None
                 await save_to_mongo(
                     session_id=session_id,
                     user_id=user_id,
                     user_msg=user_message or "What is in this image?",
                     assistant_msg=full_reply,
-                    lang=request.detected_language or "en",
-                    title=title
+                    lang=_detected_language,
+                    title=title,
                 )
                 yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-                return
 
             else:
+                # Text: streaming
                 stream = groq_client.chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": final_prompt}],
@@ -465,27 +465,27 @@ User's latest question: {user_message if isinstance(user_content, list) else use
                     max_tokens=1024,
                     stream=True,
                 )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                    if delta:
+                        full_reply += delta
+                        yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                if delta is not None and delta != "":
-                    full_reply += delta
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
-
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-
-            title = await generate_title(user_message) if is_new_session else None
-            await save_to_mongo(
-                session_id=session_id,
-                user_id=user_id,
-                user_msg=user_message,
-                assistant_msg=full_reply,
-                lang=request.detected_language or "en",
-                title=title
-            )
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+                title = await generate_title(user_message) if is_new_session else None
+                await save_to_mongo(
+                    session_id=session_id,
+                    user_id=user_id,
+                    user_msg=user_message,
+                    assistant_msg=full_reply,
+                    lang=_detected_language,
+                    title=title,
+                )
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            error_msg = str(e)
+            yield f"data: {json.dumps({'type': 'chunk', 'content': f'⚠️ Error: {error_msg}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
     return FastAPIStreamingResponse(
         generate(),
