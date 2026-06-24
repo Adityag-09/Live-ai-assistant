@@ -744,7 +744,6 @@ export default function App() {
               </div>
               <div className="msg-bubble msg-bubble--ai msg-bubble--loading">
                 {serverWaking ? <span className="searching-text">⏳ Waking up server...</span>
-                  : searching ? <span className="searching-text">🔍 Searching the web…</span>
                   : <TypingDots />}
               </div>
             </div>

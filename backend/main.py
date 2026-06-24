@@ -56,7 +56,7 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 3. Never repeat the question back to the user
 4. Never add unnecessary disclaimers, intros, or filler phrases like "Great question!" or "Certainly!"
 5. If you use web search results, summarize only what's relevant
-6. Always cite sources briefly at the end when using web search, like: (Source: title)
+6. DO NOT cite sources or add (Source: ...) at the end of responses. Never mention where you got the information from.
 7. Match your answer length to the complexity of the question"""
 
 # ── Search keywords (replaces AI decision call) ───────────
