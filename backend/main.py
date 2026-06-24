@@ -47,6 +47,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ── System prompt ─────────────────────────────────────────
 SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 
@@ -57,6 +58,22 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 5. If you use web search results, summarize only what's relevant
 6. Always cite sources briefly at the end when using web search, like: (Source: title)
 7. Match your answer length to the complexity of the question"""
+
+# ── Search keywords (replaces AI decision call) ───────────
+SEARCH_KEYWORDS = [
+    'latest', 'today', 'current', 'now', 'news', 'price',
+    'weather', 'score', 'who is', 'what is', '2025', '2026',
+    'recent', 'trending', 'live', 'update', 'yesterday',
+    'this week', 'this month', 'happened', 'result', 'winner',
+    'released', 'launch', 'announced', 'breaking', 'stock',
+    'crypto', 'bitcoin', 'election', 'match', 'game', 'ipl',
+    'war', 'earthquake', 'flood', 'disaster', 'new model',
+    'just', 'recently', 'right now', 'at the moment'
+]
+
+def should_search(message: str) -> bool:
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in SEARCH_KEYWORDS)
 
 # ── Models ────────────────────────────────────────────────
 class Message(BaseModel):
@@ -127,11 +144,9 @@ async def signup(request: SignupRequest):
     if users_collection is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
-    # Email validation
     if "@" not in request.email or "." not in request.email:
         raise HTTPException(status_code=400, detail="Invalid email address")
 
-    # Password strength
     if len(request.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
@@ -175,58 +190,6 @@ async def login(request: LoginRequest):
 async def get_me(current_user=Depends(get_current_user)):
     return {"id": current_user["_id"], "name": current_user["name"], "email": current_user["email"]}
 
-@app.post("/chat/guest")
-async def chat_guest(request: ChatRequest) -> ChatResponse:
-    """No auth required — history not saved"""
-    user_message = request.message.strip()
-    history = request.history or []
-    lang_instruction = request.language_instruction or ""
-    session_id = request.session_id or str(uuid.uuid4())
-
-    history.append(Message(role="user", content=user_message))
-    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
-
-    system_prompt = SYSTEM_PROMPT
-    if lang_instruction:
-        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
-
-    decision_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}\n\nDo you need to search the web?\nAnswer ONLY 'YES' or 'NO'."
-    decision_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": decision_prompt}],
-        temperature=0.3, max_tokens=10,
-    )
-    search_decision = decision_response.choices[0].message.content.strip().upper()
-
-    search_results = ""
-    is_searching = "YES" in search_decision
-    if is_searching:
-        try:
-            response = tavily_client.search(query=user_message, max_results=5)
-            if response and "results" in response:
-                search_results = "\n\n".join([
-                    f"Source: {r.get('title','Unknown')}\n{r.get('content','')}"
-                    for r in response["results"]
-                ])
-        except Exception as e:
-            search_results = f"Search error: {str(e)}"
-
-    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
-    if search_results:
-        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
-    if lang_instruction:
-        final_prompt += f"\n\nREMINDER: {lang_instruction}"
-
-    final_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": final_prompt}],
-        temperature=0.7, max_tokens=1024,
-    )
-    assistant_reply = final_response.choices[0].message.content
-    history.append(Message(role="assistant", content=assistant_reply))
-
-    return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)
-
 # ── Auto title generator ──────────────────────────────────
 async def generate_title(user_msg: str) -> str:
     try:
@@ -265,7 +228,55 @@ async def save_to_mongo(session_id: str, user_id: str, user_msg: str, assistant_
     except Exception as e:
         print(f"MongoDB save error: {e}")
 
-# ── Chat route ────────────────────────────────────────────
+# ── Search helper ─────────────────────────────────────────
+async def run_search(query: str) -> str:
+    try:
+        response = tavily_client.search(query=query, max_results=5)
+        if response and "results" in response:
+            return "\n\n".join([
+                f"Source: {r.get('title', 'Unknown')}\n{r.get('content', '')}"
+                for r in response["results"]
+            ])
+    except Exception as e:
+        return f"Search error: {str(e)}"
+    return ""
+
+# ── Guest chat route ──────────────────────────────────────
+@app.post("/chat/guest")
+async def chat_guest(request: ChatRequest) -> ChatResponse:
+    user_message = request.message.strip()
+    history = request.history or []
+    lang_instruction = request.language_instruction or ""
+    session_id = request.session_id or str(uuid.uuid4())
+
+    history.append(Message(role="user", content=user_message))
+    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
+
+    system_prompt = SYSTEM_PROMPT
+    if lang_instruction:
+        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
+
+    # Keyword-based search decision — no extra API call!
+    is_searching = should_search(user_message)
+    search_results = await run_search(user_message) if is_searching else ""
+
+    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
+    if search_results:
+        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
+    if lang_instruction:
+        final_prompt += f"\n\nREMINDER: {lang_instruction}"
+
+    final_response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": final_prompt}],
+        temperature=0.7, max_tokens=1024,
+    )
+    assistant_reply = final_response.choices[0].message.content
+    history.append(Message(role="assistant", content=assistant_reply))
+
+    return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)
+
+# ── Auth chat route ───────────────────────────────────────
 @app.post("/chat")
 async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> ChatResponse:
     user_message = request.message.strip()
@@ -276,47 +287,15 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     is_new_session = not request.session_id
 
     history.append(Message(role="user", content=user_message))
-
-    conversation_text = "\n".join([
-        f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]
-    ])
+    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
     system_prompt = SYSTEM_PROMPT
     if lang_instruction:
         system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
 
-    decision_prompt = f"""{system_prompt}
-
-Conversation history:
-{conversation_text}
-
-User's latest question: {user_message}
-
-Do you need to search the web for current information?
-Answer with ONLY "YES" or "NO" (nothing else)."""
-
-    decision_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": decision_prompt}],
-        temperature=0.3,
-        max_tokens=10,
-    )
-    search_decision = decision_response.choices[0].message.content.strip().upper()
-
-    search_results = ""
-    is_searching = False
-
-    if "YES" in search_decision:
-        is_searching = True
-        try:
-            response = tavily_client.search(query=user_message, max_results=5)
-            if response and "results" in response:
-                search_results = "\n\n".join([
-                    f"Source: {result.get('title', 'Unknown')}\n{result.get('content', '')}"
-                    for result in response["results"]
-                ])
-        except Exception as e:
-            search_results = f"Error during web search: {str(e)}"
+    # Keyword-based search decision — no extra API call!
+    is_searching = should_search(user_message)
+    search_results = await run_search(user_message) if is_searching else ""
 
     final_prompt = f"""{system_prompt}
 
@@ -339,7 +318,6 @@ User's latest question: {user_message}"""
     assistant_reply = final_response.choices[0].message.content
     history.append(Message(role="assistant", content=assistant_reply))
 
-    # Generate smart title for new sessions
     title = await generate_title(user_message) if is_new_session else None
 
     await save_to_mongo(
@@ -352,6 +330,130 @@ User's latest question: {user_message}"""
     )
 
     return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)
+
+# ── Streaming chat route ──────────────────────────────────
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest, current_user=Depends(get_current_user)):
+    user_message = request.message.strip()
+    history = request.history or []
+    lang_instruction = request.language_instruction or ""
+    session_id = request.session_id or str(uuid.uuid4())
+    user_id = current_user["_id"]
+    is_new_session = not request.session_id
+
+    history.append(Message(role="user", content=user_message))
+    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
+
+    system_prompt = SYSTEM_PROMPT
+    if lang_instruction:
+        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
+
+    # Keyword-based search decision — no extra API call!
+    is_searching = should_search(user_message)
+    search_results = await run_search(user_message) if is_searching else ""
+
+    final_prompt = f"""{system_prompt}
+
+Conversation history:
+{conversation_text}
+
+User's latest question: {user_message}"""
+
+    if search_results:
+        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
+    if lang_instruction:
+        final_prompt += f"\n\nREMINDER: {lang_instruction}"
+
+    async def generate():
+        full_reply = ""
+        try:
+            yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
+
+            stream = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": final_prompt}],
+                temperature=0.7,
+                max_tokens=1024,
+                stream=True,
+            )
+
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    full_reply += delta
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+
+            title = await generate_title(user_message) if is_new_session else None
+            await save_to_mongo(
+                session_id=session_id,
+                user_id=user_id,
+                user_msg=user_message,
+                assistant_msg=full_reply,
+                lang=request.detected_language or "en",
+                title=title
+            )
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return FastAPIStreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+# ── Guest streaming route ─────────────────────────────────
+@app.post("/chat/guest/stream")
+async def chat_guest_stream(request: ChatRequest):
+    user_message = request.message.strip()
+    history = request.history or []
+    lang_instruction = request.language_instruction or ""
+    session_id = request.session_id or str(uuid.uuid4())
+
+    history.append(Message(role="user", content=user_message))
+    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
+
+    system_prompt = SYSTEM_PROMPT
+    if lang_instruction:
+        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
+
+    # Keyword-based search decision — no extra API call!
+    is_searching = should_search(user_message)
+    search_results = await run_search(user_message) if is_searching else ""
+
+    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
+    if search_results:
+        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
+    if lang_instruction:
+        final_prompt += f"\n\nREMINDER: {lang_instruction}"
+
+    async def generate():
+        try:
+            yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
+
+            stream = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": final_prompt}],
+                temperature=0.7, max_tokens=1024, stream=True,
+            )
+
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return FastAPIStreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 # ── Session routes ────────────────────────────────────────
 @app.get("/sessions")
@@ -403,178 +505,6 @@ async def delete_session(session_id: str, current_user=Depends(get_current_user)
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
-
-from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
-import json
-
-@app.post("/chat/stream")
-async def chat_stream(request: ChatRequest, current_user=Depends(get_current_user)):
-    user_message = request.message.strip()
-    history = request.history or []
-    lang_instruction = request.language_instruction or ""
-    session_id = request.session_id or str(uuid.uuid4())
-    user_id = current_user["_id"]
-    is_new_session = not request.session_id
-
-    history.append(Message(role="user", content=user_message))
-    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
-
-    system_prompt = SYSTEM_PROMPT
-    if lang_instruction:
-        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
-
-    # Step 1 — decide if web search needed
-    decision_prompt = f"""{system_prompt}
-
-Conversation history:
-{conversation_text}
-
-User's latest question: {user_message}
-
-Do you need to search the web for current information?
-Answer with ONLY "YES" or "NO" (nothing else)."""
-
-    decision_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": decision_prompt}],
-        temperature=0.3,
-        max_tokens=10,
-    )
-    search_decision = decision_response.choices[0].message.content.strip().upper()
-
-    search_results = ""
-    is_searching = "YES" in search_decision
-
-    if is_searching:
-        try:
-            response = tavily_client.search(query=user_message, max_results=5)
-            if response and "results" in response:
-                search_results = "\n\n".join([
-                    f"Source: {r.get('title','Unknown')}\n{r.get('content','')}"
-                    for r in response["results"]
-                ])
-        except Exception as e:
-            search_results = f"Search error: {str(e)}"
-
-    final_prompt = f"""{system_prompt}
-
-Conversation history:
-{conversation_text}
-
-User's latest question: {user_message}"""
-
-    if search_results:
-        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
-    if lang_instruction:
-        final_prompt += f"\n\nREMINDER: {lang_instruction}"
-
-    async def generate():
-        full_reply = ""
-        try:
-            # Send search status first
-            yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
-
-            # Stream the response
-            stream = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": final_prompt}],
-                temperature=0.7,
-                max_tokens=1024,
-                stream=True,
-            )
-
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    full_reply += delta
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
-
-            # Send done signal
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-
-            # Save to MongoDB after streaming completes
-            title = await generate_title(user_message) if is_new_session else None
-            await save_to_mongo(
-                session_id=session_id,
-                user_id=user_id,
-                user_msg=user_message,
-                assistant_msg=full_reply,
-                lang=request.detected_language or "en",
-                title=title
-            )
-
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-    return FastAPIStreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        }
-    )
-
-
-@app.post("/chat/guest/stream")
-async def chat_guest_stream(request: ChatRequest):
-    """Streaming for guest users — no auth, no save"""
-    user_message = request.message.strip()
-    history = request.history or []
-    lang_instruction = request.language_instruction or ""
-    session_id = request.session_id or str(uuid.uuid4())
-
-    history.append(Message(role="user", content=user_message))
-    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
-
-    system_prompt = SYSTEM_PROMPT
-    if lang_instruction:
-        system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
-
-    decision_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": f"{system_prompt}\n\nUser's question: {user_message}\n\nDo you need to search the web? Answer ONLY YES or NO."}],
-        temperature=0.3, max_tokens=10,
-    )
-    search_decision = decision_response.choices[0].message.content.strip().upper()
-
-    search_results = ""
-    is_searching = "YES" in search_decision
-    if is_searching:
-        try:
-            response = tavily_client.search(query=user_message, max_results=5)
-            if response and "results" in response:
-                search_results = "\n\n".join([f"Source: {r.get('title','Unknown')}\n{r.get('content','')}" for r in response["results"]])
-        except Exception as e:
-            search_results = f"Search error: {str(e)}"
-
-    final_prompt = f"{system_prompt}\n\nConversation history:\n{conversation_text}\n\nUser's latest question: {user_message}"
-    if search_results:
-        final_prompt += f"\n\nWeb search results:\n{search_results}\n\nProvide a comprehensive answer."
-    if lang_instruction:
-        final_prompt += f"\n\nREMINDER: {lang_instruction}"
-
-    async def generate():
-        try:
-            yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
-            stream = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": final_prompt}],
-                temperature=0.7, max_tokens=1024, stream=True,
-            )
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-    return FastAPIStreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-    )
 
 if __name__ == "__main__":
     import uvicorn
