@@ -283,11 +283,64 @@ body {
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
-  .messages { padding: 1rem 1rem 0.5rem; }
-  .input-area { padding: 0.75rem 1rem 1rem; }
-  .header-inner { padding: 0.75rem 1rem; }
+  /* Layout */
+  .messages { padding: 1rem 0.75rem 0.5rem; gap: 1rem; }
+  .input-area { padding: 0.6rem 0.75rem 0.9rem; }
+  .header-inner { padding: 0.65rem 0.75rem; }
+
+  /* Header — hide subtitle, shrink elements */
   .header-sub { display: none; }
-  .msg-bubble { max-width: 85%; font-size: 0.875rem; }
+  .header-title { font-size: 0.9rem; }
+  .logo-icon { width: 32px; height: 32px; border-radius: 8px; }
+  .header-right { gap: 0.4rem; }
+  .status-dot span:last-child { display: none; }
+  .export-btn { padding: 0.25rem 0.5rem; font-size: 0.72rem; }
+  .theme-toggle { width: 30px; height: 30px; font-size: 0.9rem; }
+
+  /* Bubbles */
+  .msg-bubble { max-width: 88%; font-size: 0.855rem; padding: 0.65rem 0.85rem; }
+  .avatar { width: 26px; height: 26px; }
+
+  /* Input row — make buttons smaller */
+  .input-field { font-size: 0.875rem; padding: 0.65rem 0.85rem; }
+  .send-btn { width: 38px; height: 38px; font-size: 1rem; }
+  .mic-btn { width: 34px; height: 34px; font-size: 14px; }
+  .attach-btn { width: 34px; height: 34px; font-size: 14px; }
+  .input-row { gap: 0.4rem; }
+  .input-footer { font-size: 0.65rem; }
+
+  /* Empty state */
+  .empty-state h2 { font-size: 1.1rem; }
+  .empty-state p { font-size: 0.82rem; }
+  .suggestion-chip { font-size: 0.75rem; padding: 0.4rem 0.75rem; }
+  .suggestions { gap: 0.4rem; }
+
+  /* Image preview in chat */
+  .msg-image-preview { max-width: 200px; max-height: 160px; }
+
+  /* Export dropdown — full width on mobile */
+  .export-dropdown { right: auto; left: 50%; transform: translateX(-50%); min-width: 160px; }
+
+  /* Guest nudge */
+  .guest-nudge { font-size: 0.78rem; padding: 0.6rem 0.75rem; }
+
+  /* Auth card */
+  .auth-card { padding: 1.75rem 1.25rem; margin: 1rem; max-width: 100%; }
+  .auth-title { font-size: 1.2rem; }
+
+  /* File chip */
+  .file-chip { font-size: 0.75rem; padding: 0.25rem 0.6rem; }
+
+  /* Signin header button */
+  .signin-header-btn { padding: 0.35rem 0.65rem; font-size: 0.75rem; }
+}
+
+/* ── Very small screens (iPhone SE etc) ── */
+@media (max-width: 380px) {
+  .header-title { font-size: 0.82rem; }
+  .export-btn { display: none; }
+  .msg-bubble { max-width: 92%; }
+  .input-field { font-size: 0.82rem; }
 }
 /* ── Password strength ── */
 .pwd-strength { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -350,7 +403,7 @@ body {
   flex-shrink: 0;
   transition: background 0.2s;
 }
-.mic-btn:hover { background: var(--hover); }
+.mic-btn:hover { background: var(--surface2); }
 .mic-btn--active {
   background: #ef4444;
   border-color: #ef4444;
@@ -365,7 +418,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--hover);
+  background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 0.3rem 0.75rem;
@@ -398,9 +451,9 @@ body {
   flex-shrink: 0;
   transition: background 0.2s;
 }
-.attach-btn:hover { background: var(--hover); }
+.attach-btn:hover { background: var(--surface2); }
 .attach-btn--active {
-  background: var(--hover);
+  background: var(--surface2);
   border-color: #4f8fff;
 }
 .msg-file-preview {
@@ -439,7 +492,7 @@ body {
   transition: background 0.2s;
   white-space: nowrap;
 }
-.export-btn:hover { background: var(--hover); }
+.export-btn:hover { background: var(--surface2); }
 
 .export-overlay {
   position: fixed;
@@ -472,4 +525,4 @@ body {
   text-align: left;
   transition: background 0.15s;
 }
-.export-dropdown button:hover { background: var(--hover); }
+.export-dropdown button:hover { background: var(--surface2); }
