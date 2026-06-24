@@ -41,6 +41,7 @@ const PLACEHOLDERS = {
   fr: 'Écrivez votre message...', es: 'Escribe tu mensaje...',
   de: 'Nachricht eingeben...', pt: 'Digite sua mensagem...',
 }
+
 const ALL_SUGGESTIONS = [
   { icon: '🌐', text: "What's happening in AI today?" },
   { icon: '💡', text: 'Explain quantum computing simply' },
@@ -74,9 +75,7 @@ const ALL_SUGGESTIONS = [
   { icon: '🎯', text: 'How to stay productive all day?' },
 ]
 
-const SUGGESTIONS = ALL_SUGGESTIONS
-  .sort(() => Math.random() - 0.5)
-  .slice(0, 4)
+const SUGGESTIONS = ALL_SUGGESTIONS.sort(() => Math.random() - 0.5).slice(0, 4)
 
 // ── Particle background ───────────────────────────────────
 function ParticleCanvas({ darkMode }) {
@@ -107,8 +106,6 @@ function ParticleCanvas({ darkMode }) {
 
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      // draw connections
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x
@@ -124,20 +121,16 @@ function ParticleCanvas({ darkMode }) {
           }
         }
       }
-
-      // draw dots
       particles.forEach(p => {
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
         ctx.fillStyle = `rgba(${COLOR},${darkMode ? 0.45 : 0.35})`
         ctx.fill()
-
         p.x += p.vx
         p.y += p.vy
         if (p.x < 0 || p.x > canvas.width) p.vx *= -1
         if (p.y < 0 || p.y > canvas.height) p.vy *= -1
       })
-
       animId = requestAnimationFrame(draw)
     }
 
@@ -214,6 +207,7 @@ export default function App() {
   const [searching, setSearching] = useState(false)
   const [detectedLang, setDetectedLang] = useState('en')
   const [darkMode, setDarkMode] = useState(true)
+  const [sessionId, setSessionId] = useState(null)   // ← MongoDB session
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -262,13 +256,19 @@ export default function App() {
         history,
         language_instruction: langInstruction,
         detected_language: lang,
+        session_id: sessionId,           // ← send session id
       })
+
       if (response.data.is_searching) setSearching(true)
+
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.reply,
         detectedLang: lang !== 'en' ? lang : null,
       }])
+
+      setSessionId(response.data.session_id)  // ← save session id from backend
+
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -332,7 +332,9 @@ export default function App() {
             </div>
           </div>
         )}
+
         {messages.map((msg, i) => <Message key={i} message={msg} />)}
+
         {loading && (
           <div className="msg-row msg-row--ai">
             <div className="avatar avatar--ai">
@@ -345,6 +347,7 @@ export default function App() {
             </div>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </main>
 
