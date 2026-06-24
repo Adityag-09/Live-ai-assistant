@@ -41,12 +41,42 @@ const PLACEHOLDERS = {
   fr: 'Écrivez votre message...', es: 'Escribe tu mensaje...',
   de: 'Nachricht eingeben...', pt: 'Digite sua mensagem...',
 }
-const SUGGESTIONS = [
+const ALL_SUGGESTIONS = [
   { icon: '🌐', text: "What's happening in AI today?" },
   { icon: '💡', text: 'Explain quantum computing simply' },
   { icon: '📈', text: 'Latest stock market news' },
   { icon: '🌍', text: 'Translate "Hello, how are you?" to French' },
+  { icon: '🚀', text: 'What are the latest space discoveries?' },
+  { icon: '🎬', text: 'Top movies releasing this week' },
+  { icon: '🤖', text: 'What can you help me with?' },
+  { icon: '💰', text: 'What is Bitcoin price right now?' },
+  { icon: '🧬', text: 'Latest breakthroughs in science' },
+  { icon: '⚽', text: 'Latest football scores today' },
+  { icon: '🌦️', text: "What's the weather like today?" },
+  { icon: '📱', text: 'Best smartphones of 2025' },
+  { icon: '🎵', text: 'Top trending songs right now' },
+  { icon: '🍕', text: 'Give me a quick pasta recipe' },
+  { icon: '💪', text: 'Best exercises for beginners at home' },
+  { icon: '📚', text: 'Recommend me a book to read' },
+  { icon: '🧠', text: 'How does the human brain work?' },
+  { icon: '🌙', text: 'Fun facts about the moon' },
+  { icon: '🐍', text: 'Teach me a Python tip in 1 minute' },
+  { icon: '💼', text: 'How to ace a job interview?' },
+  { icon: '🎮', text: 'Best games releasing this month' },
+  { icon: '✈️', text: 'Best travel destinations in 2025' },
+  { icon: '📰', text: "What's the biggest news today?" },
+  { icon: '🔐', text: 'How to stay safe online?' },
+  { icon: '🌿', text: 'Easy tips to live more sustainably' },
+  { icon: '🧪', text: 'Explain DNA in simple terms' },
+  { icon: '💬', text: 'How to improve my communication skills?' },
+  { icon: '🪐', text: 'Tell me something amazing about space' },
+  { icon: '📊', text: 'How does the stock market work?' },
+  { icon: '🎯', text: 'How to stay productive all day?' },
 ]
+
+const SUGGESTIONS = ALL_SUGGESTIONS
+  .sort(() => Math.random() - 0.5)
+  .slice(0, 4)
 
 // ── Particle background ───────────────────────────────────
 function ParticleCanvas({ darkMode }) {
