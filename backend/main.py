@@ -329,6 +329,7 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     user_id = current_user["_id"]
     is_new_session = not request.session_id
     check_rate_limit(user_id) 
+    print(f"DEBUG ROUTE: file_type={request.file_type} file_context_len={len(request.file_context) if request.file_context else 0} mime={request.mime_type}")
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
