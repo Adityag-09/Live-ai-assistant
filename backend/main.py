@@ -441,7 +441,6 @@ User's latest question: {user_message if isinstance(user_content, list) else use
                 vision_reply = vision_response.choices[0].message.content or "I couldn't analyze this image."
                 full_reply = vision_reply
                 yield f"data: {json.dumps({'type': 'chunk', 'content': vision_reply})}\n\n"
-                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
                 title = await generate_title(user_message or "Image analysis") if is_new_session else None
                 await save_to_mongo(
                     session_id=session_id,
@@ -451,6 +450,7 @@ User's latest question: {user_message if isinstance(user_content, list) else use
                     lang=request.detected_language or "en",
                     title=title
                 )
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
                 return
 
             else:
