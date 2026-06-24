@@ -1,4 +1,5 @@
 import os
+import bcrypt
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,9 +11,7 @@ from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 import uuid
-import hashlib
 
 load_dotenv()
 
@@ -31,7 +30,6 @@ db = mongo_client["live_ai_assistant"] if mongo_client is not None else None
 chats_collection = db["chats"] if db is not None else None
 users_collection = db["users"] if db is not None else None
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
 
 app = FastAPI(title="Live AI Assistant")
@@ -80,15 +78,13 @@ class AuthResponse(BaseModel):
     user: dict
 
 # ── Auth helpers ──────────────────────────────────────────
-def preprocess_password(password: str) -> str:
-    # Hash password with sha256 first to avoid bcrypt 72 char limit
-    return hashlib.sha256(password.encode()).hexdigest()
-
 def hash_password(password: str) -> str:
-    return pwd_context.hash(preprocess_password(password))
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(preprocess_password(plain), hashed)
+    return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
 
 def create_token(user_id: str) -> str:
     expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
