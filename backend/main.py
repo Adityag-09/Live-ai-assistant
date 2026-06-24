@@ -148,10 +148,9 @@ async def login(request: LoginRequest):
         token=token,
         user={"id": user["_id"], "name": user["name"], "email": user["email"]}
     )
-
-@app.get("/auth/me")
-async def get_me(current_user=Depends(get_current_user)):
-    return {"id": current_user["_id"], "name": current_user["name"], "email": current_user["email"]}
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health_check():
+    return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
 
 # ── System prompt ─────────────────────────────────────────
 SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
