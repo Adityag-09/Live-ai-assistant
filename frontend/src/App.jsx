@@ -28,13 +28,11 @@ const LANGUAGE_NAMES = {
   ja: 'Japanese', ko: 'Korean', ru: 'Russian', el: 'Greek',
   fr: 'French', es: 'Spanish', de: 'German', pt: 'Portuguese',
 }
-
 const LANGUAGE_FLAGS = {
   en: '🇬🇧', hi: '🇮🇳', ar: '🇸🇦', zh: '🇨🇳',
   ja: '🇯🇵', ko: '🇰🇷', ru: '🇷🇺', el: '🇬🇷',
   fr: '🇫🇷', es: '🇪🇸', de: '🇩🇪', pt: '🇵🇹',
 }
-
 const PLACEHOLDERS = {
   en: 'Type your message...', hi: 'अपना संदेश लिखें...',
   ar: 'اكتب رسالتك...', zh: '输入您的消息...',
@@ -43,7 +41,6 @@ const PLACEHOLDERS = {
   fr: 'Écrivez votre message...', es: 'Escribe tu mensaje...',
   de: 'Nachricht eingeben...', pt: 'Digite sua mensagem...',
 }
-
 const SUGGESTIONS = [
   { icon: '🌐', text: "What's happening in AI today?" },
   { icon: '💡', text: 'Explain quantum computing simply' },
@@ -51,6 +48,80 @@ const SUGGESTIONS = [
   { icon: '🌍', text: 'Translate "Hello, how are you?" to French' },
 ]
 
+// ── Particle background ───────────────────────────────────
+function ParticleCanvas({ darkMode }) {
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    let animId
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const COUNT = 72
+    const COLOR = darkMode ? '255,255,255' : '79,143,255'
+
+    const particles = Array.from({ length: COUNT }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 1.8 + 0.6,
+    }))
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // draw connections
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x
+          const dy = particles[i].y - particles[j].y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < 130) {
+            ctx.beginPath()
+            ctx.strokeStyle = `rgba(${COLOR},${(1 - dist / 130) * (darkMode ? 0.15 : 0.12)})`
+            ctx.lineWidth = 0.6
+            ctx.moveTo(particles[i].x, particles[i].y)
+            ctx.lineTo(particles[j].x, particles[j].y)
+            ctx.stroke()
+          }
+        }
+      }
+
+      // draw dots
+      particles.forEach(p => {
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(${COLOR},${darkMode ? 0.45 : 0.35})`
+        ctx.fill()
+
+        p.x += p.vx
+        p.y += p.vy
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1
+      })
+
+      animId = requestAnimationFrame(draw)
+    }
+
+    draw()
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [darkMode])
+
+  return <canvas ref={canvasRef} className="particle-canvas" />
+}
+
+// ── Typing dots ───────────────────────────────────────────
 function TypingDots() {
   return (
     <div className="typing-dots">
@@ -59,6 +130,7 @@ function TypingDots() {
   )
 }
 
+// ── Message ───────────────────────────────────────────────
 function Message({ message }) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
@@ -104,24 +176,23 @@ function Message({ message }) {
   )
 }
 
+// ── App ───────────────────────────────────────────────────
 export default function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
   const [detectedLang, setDetectedLang] = useState('en')
-  const [darkMode, setDarkMode] = useState(true)  // ← NEW
+  const [darkMode, setDarkMode] = useState(true)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-  // ← NEW: apply theme to <html> and save preference
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
     localStorage.setItem('theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
 
-  // ← NEW: load saved theme on first render
   useEffect(() => {
     const saved = localStorage.getItem('theme')
     if (saved) setDarkMode(saved === 'dark')
@@ -162,15 +233,13 @@ export default function App() {
         language_instruction: langInstruction,
         detected_language: lang,
       })
-
       if (response.data.is_searching) setSearching(true)
-
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.reply,
         detectedLang: lang !== 'en' ? lang : null,
       }])
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: '⚠️ Could not reach the server. Make sure your backend is running on port 8000.',
@@ -191,6 +260,8 @@ export default function App() {
 
   return (
     <div className="app">
+      <ParticleCanvas darkMode={darkMode} />
+
       <header className="header">
         <div className="header-inner">
           <div className="header-logo">
@@ -204,9 +275,7 @@ export default function App() {
               <div className="header-sub">Powered by web search · speaks your language</div>
             </div>
           </div>
-
           <div className="header-right">
-            {/* ← NEW: theme toggle */}
             <button className="theme-toggle" onClick={() => setDarkMode(d => !d)} title="Toggle theme">
               {darkMode ? '☀️' : '🌙'}
             </button>
@@ -215,7 +284,6 @@ export default function App() {
               Online
             </div>
           </div>
-
         </div>
       </header>
 
@@ -234,9 +302,7 @@ export default function App() {
             </div>
           </div>
         )}
-
         {messages.map((msg, i) => <Message key={i} message={msg} />)}
-
         {loading && (
           <div className="msg-row msg-row--ai">
             <div className="avatar avatar--ai">
@@ -249,7 +315,6 @@ export default function App() {
             </div>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </main>
 
