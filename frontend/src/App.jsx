@@ -79,10 +79,16 @@ const ALL_SUGGESTIONS = [
 ]
 const SUGGESTIONS = ALL_SUGGESTIONS.sort(() => Math.random() - 0.5).slice(0, 4)
 
+// ── Format timestamp ──────────────────────────────────────
+const formatTime = (date) => {
+  return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // ── Axios auth helper ─────────────────────────────────────
 const authAxios = (token) => axios.create({
   baseURL: API_URL,
-  headers: { Authorization: `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${token}` },
+  timeout: 60000,
 })
 
 // ── Particle canvas ───────────────────────────────────────
@@ -143,18 +149,50 @@ function AuthPage({ onAuth, darkMode }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pwdStrength, setPwdStrength] = useState(0)
+
+  const getPasswordStrength = (pwd) => {
+    let score = 0
+    if (pwd.length >= 6) score++
+    if (pwd.length >= 10) score++
+    if (/[A-Z]/.test(pwd)) score++
+    if (/[0-9]/.test(pwd)) score++
+    if (/[^A-Za-z0-9]/.test(pwd)) score++
+    return score
+  }
+
+  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong']
+  const strengthColor = ['', '#f87171', '#fb923c', '#facc15', '#4ade80', '#22c55e']
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    if (!isLogin) {
+      if (!email.includes('@') || !email.includes('.')) {
+        setError('Please enter a valid email address')
+        return
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters')
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/signup'
       const payload = isLogin ? { email, password } : { name, email, password }
-      const res = await axios.post(`${API_URL}${endpoint}`, payload)
+      const res = await axios.post(`${API_URL}${endpoint}`, payload, { timeout: 60000 })
       onAuth(res.data.token, res.data.user)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Something went wrong')
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Server is waking up, please wait 30 seconds and try again')
+      } else if (!err.response) {
+        setError('Cannot reach server. Check your connection and try again')
+      } else {
+        setError(err.response?.data?.detail || 'Something went wrong')
+      }
     } finally {
       setLoading(false)
     }
@@ -174,25 +212,36 @@ function AuthPage({ onAuth, darkMode }) {
 
         <form onSubmit={handleSubmit} className="auth-form">
           {!isLogin && (
-            <input
-              type="text" placeholder="Your name" value={name}
-              onChange={e => setName(e.target.value)}
-              className="auth-input" required
-            />
+            <input type="text" placeholder="Your name" value={name}
+              onChange={e => setName(e.target.value)} className="auth-input" required />
           )}
-          <input
-            type="email" placeholder="Email address" value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="auth-input" required
-          />
-          <input
-            type="password" placeholder="Password" value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="auth-input" required
-          />
-          {error && <div className="auth-error">{error}</div>}
+          <input type="email" placeholder="Email address" value={email}
+            onChange={e => setEmail(e.target.value)} className="auth-input" required />
+          <div>
+            <input type="password" placeholder="Password" value={password}
+              onChange={e => { setPassword(e.target.value); setPwdStrength(getPasswordStrength(e.target.value)) }}
+              className="auth-input" required />
+            {!isLogin && password.length > 0 && (
+              <div className="pwd-strength">
+                <div className="pwd-strength-bar">
+                  {[1,2,3,4,5].map(i => (
+                    <div key={i} className="pwd-strength-seg"
+                      style={{ background: i <= pwdStrength ? strengthColor[pwdStrength] : 'var(--border)' }} />
+                  ))}
+                </div>
+                <span style={{ color: strengthColor[pwdStrength], fontSize: '0.72rem' }}>
+                  {strengthLabel[pwdStrength]}
+                </span>
+              </div>
+            )}
+          </div>
+          {error && (
+            <div className="auth-error">
+              {error.includes('waking up') ? '⏳ ' : '⚠️ '}{error}
+            </div>
+          )}
           <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? '...' : isLogin ? 'Sign In' : 'Create Account'}
+            {loading ? <span className="auth-loading">●●●</span> : isLogin ? 'Sign In' : 'Create Account'}
           </button>
         </form>
 
@@ -213,7 +262,7 @@ function TypingDots() {
 }
 
 // ── Message ───────────────────────────────────────────────
-function Message({ message }) {
+function Message({ message, onRegenerate, isLast }) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const copyText = () => {
@@ -237,11 +286,23 @@ function Message({ message }) {
         <div className="msg-content">
           {isUser ? message.content : <ReactMarkdown>{message.content}</ReactMarkdown>}
         </div>
-        {!isUser && (
-          <button className={`copy-btn ${copied ? 'copy-btn--done' : ''}`} onClick={copyText}>
-            {copied ? '✓ Copied' : '⧉ Copy'}
-          </button>
-        )}
+        <div className="msg-footer">
+          {message.timestamp && (
+            <span className="msg-time">{formatTime(message.timestamp)}</span>
+          )}
+          {!isUser && (
+            <div className="msg-actions">
+              <button className={`copy-btn ${copied ? 'copy-btn--done' : ''}`} onClick={copyText}>
+                {copied ? '✓ Copied' : '⧉ Copy'}
+              </button>
+              {isLast && onRegenerate && (
+                <button className="regen-btn" onClick={onRegenerate} title="Regenerate response">
+                  🔄 Retry
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       {isUser && (
         <div className="avatar avatar--user">
@@ -271,10 +332,15 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
 
         <div className="sidebar-sessions">
           <div className="sidebar-label">Recent Chats</div>
-          {sessions.length === 0 && <div className="sidebar-empty">No chats yet</div>}
+          {sessions.length === 0 && (
+            <div className="sidebar-empty">
+              <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
+              <div>No chats yet</div>
+              <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', opacity: 0.7 }}>Start a conversation!</div>
+            </div>
+          )}
           {sessions.map(s => (
-            <div
-              key={s.session_id}
+            <div key={s.session_id}
               className={`session-item ${s.session_id === currentSessionId ? 'session-item--active' : ''}`}
               onClick={() => { onSelectSession(s.session_id); setOpen(false) }}
             >
@@ -322,8 +388,10 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [serverWaking, setServerWaking] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const lastUserMessageRef = useRef('')
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -365,7 +433,6 @@ export default function App() {
   const handleNewChat = () => {
     setMessages([])
     setSessionId(null)
-    setSidebarOpen(false)
     inputRef.current?.focus()
   }
 
@@ -373,7 +440,11 @@ export default function App() {
     try {
       const res = await authAxios(token).get(`/history/${sid}`)
       if (res.data.messages) {
-        setMessages(res.data.messages.map(m => ({ role: m.role, content: m.content })))
+        setMessages(res.data.messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })))
         setSessionId(sid)
       }
     } catch {}
@@ -398,14 +469,20 @@ export default function App() {
     const userMessage = (text || input).trim()
     if (!userMessage || loading) return
     const lang = detectLanguage(userMessage)
+    lastUserMessageRef.current = userMessage
     setInput('')
     setDetectedLang('en')
     const langInstruction = lang !== 'en'
       ? `The user is writing in ${LANGUAGE_NAMES[lang]}. You MUST reply in ${LANGUAGE_NAMES[lang]} only.`
       : ''
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    const timestamp = new Date().toISOString()
+    setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp }])
     setLoading(true)
     setSearching(false)
+
+    // Show server waking message after 5 seconds
+    const wakingTimer = setTimeout(() => setServerWaking(true), 5000)
+
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }))
       const response = await authAxios(token).post('/chat', {
@@ -414,24 +491,45 @@ export default function App() {
         detected_language: lang,
         session_id: sessionId,
       })
+      clearTimeout(wakingTimer)
+      setServerWaking(false)
       if (response.data.is_searching) setSearching(true)
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.reply,
         detectedLang: lang !== 'en' ? lang : null,
+        timestamp: new Date().toISOString(),
       }])
       setSessionId(response.data.session_id)
       fetchSessions()
     } catch (err) {
+      clearTimeout(wakingTimer)
+      setServerWaking(false)
       if (err.response?.status === 401) handleLogout()
-      else setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: '⚠️ Could not reach the server. Please try again.',
-      }])
+      else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⏳ Server took too long to respond. It may be waking up — please try again in 30 seconds.',
+          timestamp: new Date().toISOString(),
+        }])
+      } else {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⚠️ Could not reach the server. Please check your connection and try again.',
+          timestamp: new Date().toISOString(),
+        }])
+      }
     } finally {
       setLoading(false)
       setSearching(false)
       inputRef.current?.focus()
+    }
+  }
+
+  const handleRegenerate = () => {
+    if (lastUserMessageRef.current) {
+      setMessages(prev => prev.slice(0, -1))
+      sendMessage(lastUserMessageRef.current)
     }
   }
 
@@ -507,7 +605,14 @@ export default function App() {
               </div>
             </div>
           )}
-          {messages.map((msg, i) => <Message key={i} message={msg} />)}
+          {messages.map((msg, i) => (
+            <Message
+              key={i}
+              message={msg}
+              isLast={i === messages.length - 1}
+              onRegenerate={msg.role === 'assistant' ? handleRegenerate : null}
+            />
+          ))}
           {loading && (
             <div className="msg-row msg-row--ai">
               <div className="avatar avatar--ai">
@@ -516,7 +621,13 @@ export default function App() {
                 </svg>
               </div>
               <div className="msg-bubble msg-bubble--ai msg-bubble--loading">
-                {searching ? <span className="searching-text">🔍 Searching the web…</span> : <TypingDots />}
+                {serverWaking ? (
+                  <span className="searching-text">⏳ Waking up server...</span>
+                ) : searching ? (
+                  <span className="searching-text">🔍 Searching the web…</span>
+                ) : (
+                  <TypingDots />
+                )}
               </div>
             </div>
           )}

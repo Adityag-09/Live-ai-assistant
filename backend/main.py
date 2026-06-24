@@ -115,6 +115,14 @@ async def signup(request: SignupRequest):
     if users_collection is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
+    # Email validation
+    if "@" not in request.email or "." not in request.email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    # Password strength
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
     existing = await users_collection.find_one({"email": request.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -166,6 +174,19 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
 6. Always cite sources briefly at the end when using web search, like: (Source: title)
 7. Match your answer length to the complexity of the question"""
 
+# ── Auto title generator ──────────────────────────────────
+async def generate_title(user_msg: str) -> str:
+    try:
+        res = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": f"Generate a very short 4-6 word title for a chat that starts with: '{user_msg}'. Reply with ONLY the title, no quotes, no punctuation."}],
+            temperature=0.5,
+            max_tokens=20,
+        )
+        return res.choices[0].message.content.strip()[:60]
+    except:
+        return user_msg[:50]
+
 # ── MongoDB helpers ───────────────────────────────────────
 async def save_to_mongo(session_id: str, user_id: str, user_msg: str, assistant_msg: str, lang: str, title: str = None):
     if chats_collection is None:
@@ -199,6 +220,7 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     lang_instruction = request.language_instruction or ""
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
+    is_new_session = not request.session_id
 
     history.append(Message(role="user", content=user_message))
 
@@ -264,13 +286,16 @@ User's latest question: {user_message}"""
     assistant_reply = final_response.choices[0].message.content
     history.append(Message(role="assistant", content=assistant_reply))
 
+    # Generate smart title for new sessions
+    title = await generate_title(user_message) if is_new_session else None
+
     await save_to_mongo(
         session_id=session_id,
         user_id=user_id,
         user_msg=user_message,
         assistant_msg=assistant_reply,
         lang=request.detected_language or "en",
-        title=user_message[:50]
+        title=title
     )
 
     return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)

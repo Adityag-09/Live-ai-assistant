@@ -289,3 +289,22 @@ body {
   .header-sub { display: none; }
   .msg-bubble { max-width: 85%; font-size: 0.875rem; }
 }
+/* ── Password strength ── */
+.pwd-strength { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+.pwd-strength-bar { display: flex; gap: 3px; flex: 1; }
+.pwd-strength-seg { height: 3px; flex: 1; border-radius: 10px; transition: background 0.3s; }
+
+/* ── Auth loading ── */
+.auth-loading { display: inline-flex; gap: 4px; animation: pulse-text 1s infinite; }
+
+/* ── Message footer (time + actions) ── */
+.msg-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 0.4rem; flex-wrap: wrap; gap: 0.25rem; }
+.msg-time { font-size: 0.68rem; color: var(--text-dim); opacity: 0.7; }
+.msg-actions { display: flex; align-items: center; gap: 0.4rem; }
+
+/* ── Regenerate button ── */
+.regen-btn { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--text-dim); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.5rem; cursor: pointer; transition: all 0.2s; }
+.regen-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Server waking banner ── */
+.waking-banner { background: rgba(79,143,255,0.1); border: 1px solid rgba(79,143,255,0.2); border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.8rem; color: var(--accent); text-align: center; margin: 0 1.5rem; }
