@@ -438,7 +438,10 @@ User's latest question: {user_message if isinstance(user_content, list) else use
                     max_tokens=1024,
                     stream=False,
                 )
-                vision_reply = vision_response.choices[0].message.content or "I couldn't analyze this image."
+                vision_reply = vision_response.choices[0].message.content
+                print(f"DEBUG vision_reply: {repr(vision_reply)}")
+                if not vision_reply:
+                    vision_reply = "I couldn't analyze this image."
                 full_reply = vision_reply
                 yield f"data: {json.dumps({'type': 'chunk', 'content': vision_reply})}\n\n"
                 title = await generate_title(user_message or "Image analysis") if is_new_session else None
