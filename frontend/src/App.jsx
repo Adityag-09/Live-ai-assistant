@@ -397,6 +397,8 @@ export default function App() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const lastUserMessageRef = useRef('')
+  const [isListening, setIsListening] = useState(false)
+  const recognitionRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -629,7 +631,47 @@ export default function App() {
       inputRef.current?.focus()
     }
   }
-
+  const handleVoiceInput = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  if (!SpeechRecognition) {
+    alert('Voice input is not supported in this browser. Please use Chrome or Edge.')
+    return
+  }
+  if (isListening) {
+    recognitionRef.current?.stop()
+    setIsListening(false)
+    return
+  }
+  const recognition = new SpeechRecognition()
+  recognitionRef.current = recognition
+  recognition.continuous = false
+  recognition.interimResults = false
+  recognition.lang = detectedLang === 'en' ? 'en-US'
+    : detectedLang === 'hi' ? 'hi-IN'
+    : detectedLang === 'ar' ? 'ar-SA'
+    : detectedLang === 'zh' ? 'zh-CN'
+    : detectedLang === 'ja' ? 'ja-JP'
+    : detectedLang === 'ko' ? 'ko-KR'
+    : detectedLang === 'ru' ? 'ru-RU'
+    : detectedLang === 'fr' ? 'fr-FR'
+    : detectedLang === 'es' ? 'es-ES'
+    : detectedLang === 'de' ? 'de-DE'
+    : detectedLang === 'pt' ? 'pt-PT'
+    : 'en-US'
+  recognition.onstart = () => setIsListening(true)
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript
+    setIsListening(false)
+    sendMessage(transcript)
+  }
+  recognition.onerror = (event) => {
+    setIsListening(false)
+    if (event.error === 'not-allowed')
+      alert('Microphone access denied. Please allow mic permissions and try again.')
+  }
+  recognition.onend = () => setIsListening(false)
+  recognition.start()
+}
   const handleRegenerate = () => {
     if (lastUserMessageRef.current) {
       setMessages(prev => prev.slice(0, -1))
@@ -779,6 +821,15 @@ export default function App() {
               className="input-field"
               autoFocus
             />
+            <button
+              type="button"
+              onClick={handleVoiceInput}
+              disabled={loading}
+              title={isListening ? 'Stop listening' : 'Voice input'}
+              className={`mic-btn ${isListening ? 'mic-btn--active' : ''}`}
+           >
+             {isListening ? '⏹' : '🎤'}
+            </button>
             <button type="submit" disabled={loading || !input.trim()} className="send-btn">
               {loading ? '⟳' : '➤'}
             </button>
