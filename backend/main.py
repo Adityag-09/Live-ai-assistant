@@ -437,7 +437,7 @@ User's latest question: {text_with_file}"""
                     }
                 ]
                 vision_response = groq_client.chat.completions.create(
-                    model="llama-3.2-90b-vision-preview",
+                    model="llama-3.2-11b-vision-preview",
                     messages=image_messages,
                     temperature=0.7,
                     max_tokens=1024,
