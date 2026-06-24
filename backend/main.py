@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import List, Optional
 from groq import Groq
 from tavily import TavilyClient
@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 import uuid
+import hashlib
 
 load_dotenv()
 
@@ -46,6 +47,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ── Models ────────────────────────────────────────────────
 class Message(BaseModel):
     role: str
@@ -78,11 +80,15 @@ class AuthResponse(BaseModel):
     user: dict
 
 # ── Auth helpers ──────────────────────────────────────────
+def preprocess_password(password: str) -> str:
+    # Hash password with sha256 first to avoid bcrypt 72 char limit
+    return hashlib.sha256(password.encode()).hexdigest()
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return pwd_context.hash(preprocess_password(password))
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(preprocess_password(plain), hashed)
 
 def create_token(user_id: str) -> str:
     expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
@@ -148,9 +154,10 @@ async def login(request: LoginRequest):
         token=token,
         user={"id": user["_id"], "name": user["name"], "email": user["email"]}
     )
-@app.api_route("/health", methods=["GET", "HEAD"])
-async def health_check():
-    return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
+
+@app.get("/auth/me")
+async def get_me(current_user=Depends(get_current_user)):
+    return {"id": current_user["_id"], "name": current_user["name"], "email": current_user["email"]}
 
 # ── System prompt ─────────────────────────────────────────
 SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
@@ -319,7 +326,7 @@ async def delete_session(session_id: str, current_user=Depends(get_current_user)
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}
 
