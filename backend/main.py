@@ -47,6 +47,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# ── System prompt ─────────────────────────────────────────
+SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
+
+1. Keep answers SHORT and to the point — 2 to 4 sentences max for simple questions
+2. Only give long answers if the user explicitly asks for detail, explanation, or a list
+3. Never repeat the question back to the user
+4. Never add unnecessary disclaimers, intros, or filler phrases like "Great question!" or "Certainly!"
+5. If you use web search results, summarize only what's relevant
+6. Always cite sources briefly at the end when using web search, like: (Source: title)
+7. Match your answer length to the complexity of the question"""
 
 # ── Models ────────────────────────────────────────────────
 class Message(BaseModel):
@@ -216,17 +226,6 @@ async def chat_guest(request: ChatRequest) -> ChatResponse:
     history.append(Message(role="assistant", content=assistant_reply))
 
     return ChatResponse(reply=assistant_reply, history=history, is_searching=is_searching, session_id=session_id)
-
-# ── System prompt ─────────────────────────────────────────
-SYSTEM_PROMPT = """You are a helpful AI assistant. Rules you MUST follow:
-
-1. Keep answers SHORT and to the point — 2 to 4 sentences max for simple questions
-2. Only give long answers if the user explicitly asks for detail, explanation, or a list
-3. Never repeat the question back to the user
-4. Never add unnecessary disclaimers, intros, or filler phrases like "Great question!" or "Certainly!"
-5. If you use web search results, summarize only what's relevant
-6. Always cite sources briefly at the end when using web search, like: (Source: title)
-7. Match your answer length to the complexity of the question"""
 
 # ── Auto title generator ──────────────────────────────────
 async def generate_title(user_msg: str) -> str:

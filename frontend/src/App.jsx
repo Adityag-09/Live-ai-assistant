@@ -535,53 +535,61 @@ export default function App() {
       }])
 
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+  const { done, value } = await reader.read()
+  if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
+  const chunk = decoder.decode(value, { stream: true })
+  const lines = chunk.split('\n')
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue
+    const raw = line.slice(6).trim()
+    if (!raw) continue
+    try {
+      const data = JSON.parse(raw)
 
-            if (data.type === 'status') {
-              if (data.is_searching) setSearching(true)
-              if (data.session_id) newSessionId = data.session_id
-            }
-
-            if (data.type === 'chunk') {
-              streamingContent += data.content
-              setMessages(prev => {
-                const updated = [...prev]
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: streamingContent,
-                }
-                return updated
-              })
-            }
-
-            if (data.type === 'done') {
-              setSearching(false)
-              if (data.session_id) newSessionId = data.session_id
-              setMessages(prev => {
-                const updated = [...prev]
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  streaming: false,
-                }
-                return updated
-              })
-            }
-
-            if (data.type === 'error') {
-              throw new Error(data.message)
-            }
-          } catch {}
-        }
+      if (data.type === 'status') {
+        if (data.is_searching) setSearching(true)
+        if (data.session_id) newSessionId = data.session_id
       }
+
+      if (data.type === 'chunk') {
+        streamingContent += data.content
+        setMessages(prev => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (last && last.role === 'assistant') {
+            updated[updated.length - 1] = {
+              ...last,
+              content: streamingContent,
+            }
+          }
+          return updated
+        })
+      }
+
+      if (data.type === 'done') {
+        setSearching(false)
+        setLoading(false)
+        if (data.session_id) newSessionId = data.session_id
+        setMessages(prev => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (last) {
+            updated[updated.length - 1] = { ...last, streaming: false }
+          }
+          return updated
+        })
+      }
+
+      if (data.type === 'error') {
+        throw new Error(data.message)
+      }
+    } catch (e) {
+      // skip malformed JSON
+    }
+  }
+}
 
       setSessionId(newSessionId)
       if (isGuest) setGuestMessageCount(c => c + 1)
