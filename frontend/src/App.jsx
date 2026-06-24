@@ -399,6 +399,8 @@ export default function App() {
   const lastUserMessageRef = useRef('')
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef(null)
+  const [attachedFile, setAttachedFile] = useState(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -484,6 +486,7 @@ export default function App() {
     lastUserMessageRef.current = userMessage
     setInput('')
     setDetectedLang('en')
+    setAttachedFile(null)
 
     const langInstruction = lang !== 'en'
       ? `The user is writing in ${LANGUAGE_NAMES[lang]}. You MUST reply in ${LANGUAGE_NAMES[lang]} only.`
@@ -512,6 +515,10 @@ export default function App() {
           language_instruction: langInstruction,
           detected_language: lang,
           session_id: sessionId,
+          file_context: attachedFile?.content || null,
+          file_type: attachedFile?.type || null,
+          file_name: attachedFile?.name || null,
+          mime_type: attachedFile?.mime || null,
         }),
       })
 
@@ -631,6 +638,42 @@ export default function App() {
       inputRef.current?.focus()
     }
   }
+  const handleFileSelect = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+
+  const MAX = 10 * 1024 * 1024
+  if (file.size > MAX) {
+    alert('File too large. Maximum size is 10MB.')
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const res = await fetch(`${API_URL}/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      alert(err.detail || 'Failed to process file.')
+      return
+    }
+    const data = await res.json()
+    setAttachedFile({
+      name: data.filename,
+      type: data.type,
+      content: data.type === 'text' ? data.content : data.b64,
+      mime: data.mime_type || null,
+      preview: data.type === 'image' ? `data:${data.mime_type};base64,${data.b64}` : null,
+    })
+  } catch {
+    alert('Could not upload file. Please try again.')
+  }
+  e.target.value = ''
+}
   const handleVoiceInput = () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!SpeechRecognition) {
@@ -805,6 +848,15 @@ export default function App() {
         </main>
 
         <footer className="input-area">
+          {attachedFile && (
+            <div className="file-chip">
+              {attachedFile.type === 'image' && attachedFile.preview && (
+                <img src={attachedFile.preview} alt="preview" style={{ height: '32px', borderRadius: '4px' }} />
+              )}
+              <span>{attachedFile.type === 'image' ? '🖼️' : '📎'} {attachedFile.name}</span>
+              <button type="button" onClick={() => setAttachedFile(null)}>✕</button>
+            </div>
+          )}
           {showLangHint && (
             <div className="lang-hint">
               {LANGUAGE_FLAGS[detectedLang]} Detected {LANGUAGE_NAMES[detectedLang]} — I'll reply in {LANGUAGE_NAMES[detectedLang]}
@@ -821,6 +873,22 @@ export default function App() {
               className="input-field"
               autoFocus
             />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,.py,.js,.jsx,.ts,.tsx,.json,.csv,.md,.png,.jpg,.jpeg,.webp,.docx,.xlsx"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+              title="Attach file"
+              className={`attach-btn ${attachedFile ? 'attach-btn--active' : ''}`}
+            >
+              📎
+            </button>
             <button
               type="button"
               onClick={handleVoiceInput}

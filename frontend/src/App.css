@@ -361,3 +361,45 @@ body {
   50%  { transform: scale(1.15); opacity: 0.75; }
   100% { transform: scale(1);    opacity: 1; }
 }
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.4rem;
+  max-width: fit-content;
+}
+.file-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 0;
+  line-height: 1;
+}
+.file-chip button:hover { color: #ef4444; }
+
+.attach-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.attach-btn:hover { background: var(--hover); }
+.attach-btn--active {
+  background: var(--hover);
+  border-color: #4f8fff;
+}
