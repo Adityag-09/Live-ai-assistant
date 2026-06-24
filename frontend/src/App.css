@@ -403,3 +403,25 @@ body {
   background: var(--hover);
   border-color: #4f8fff;
 }
+.msg-file-preview {
+  margin-bottom: 0.5rem;
+}
+.msg-image-preview {
+  max-width: 260px;
+  max-height: 200px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 0.4rem;
+  object-fit: cover;
+}
+.msg-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.4rem;
+}

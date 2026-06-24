@@ -424,12 +424,15 @@ User's latest question: {user_message if isinstance(user_content, list) else use
         try:
             yield f"data: {json.dumps({'type': 'status', 'is_searching': is_searching, 'session_id': session_id})}\n\n"
 
-            groq_messages = [{"role": "user", "content": final_prompt}]
             if request.file_type == "image":
                 groq_messages = [{"role": "user", "content": user_content}]
+                vision_model = "llama-3.2-90b-vision-preview"
+            else:
+                groq_messages = [{"role": "user", "content": final_prompt}]
+                vision_model = "llama-3.1-8b-instant"
 
             stream = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model=vision_model,
                 messages=groq_messages,
                 temperature=0.7,
                 max_tokens=1024,

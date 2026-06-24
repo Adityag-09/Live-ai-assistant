@@ -277,6 +277,22 @@ function Message({ message, onRegenerate, isLast }) {
           <div className="lang-badge">{LANGUAGE_FLAGS[message.detectedLang]} Replying in {LANGUAGE_NAMES[message.detectedLang]}</div>
         )}
         <div className="msg-content">
+          {isUser && message.attachedFile && (
+            <div className="msg-file-preview">
+              {message.attachedFile.type === 'image' && message.attachedFile.preview ? (
+                <img src={message.attachedFile.preview} alt={message.attachedFile.name} className="msg-image-preview" />
+              ) : (
+                <div className="msg-file-chip">
+                  <span>{message.attachedFile.name.endsWith('.pdf') ? '📄' :
+                    message.attachedFile.name.match(/\.(xlsx|csv)$/) ? '📊' :
+                    message.attachedFile.name.match(/\.(docx|doc)$/) ? '📝' :
+                    message.attachedFile.name.match(/\.(py|js|jsx|ts|tsx|json)$/) ? '💻' : '📎'}
+                  </span>
+                  <span>{message.attachedFile.name}</span>
+                </div>
+              )}
+            </div>
+          )}
           {isUser ? message.content : <ReactMarkdown>{message.content}</ReactMarkdown>}
         </div>
         <div className="msg-footer">
@@ -493,7 +509,12 @@ export default function App() {
       : ''
     const timestamp = new Date().toISOString()
     
-    setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp }])
+    setMessages(prev => [...prev, { 
+      role: 'user', 
+      content: userMessage, 
+      timestamp,
+      attachedFile: attachedFile ? { name: attachedFile.name, type: attachedFile.type, preview: attachedFile.preview } : null
+    }])
     setLoading(true)
     setSearching(false)
 
