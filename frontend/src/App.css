@@ -537,3 +537,48 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
+/* ── Reactions ── */
+.reaction-wrap { position: relative; display: inline-flex; align-items: center; }
+.reaction-trigger { background: none; border: 1px solid var(--border); border-radius: 20px; padding: 0.15rem 0.4rem; font-size: 0.78rem; cursor: pointer; color: var(--text-dim); transition: all 0.2s; line-height: 1; }
+.reaction-trigger:hover { border-color: var(--accent); transform: scale(1.1); }
+.reaction-chosen { background: rgba(79,143,255,0.1); border: 1px solid rgba(79,143,255,0.3); border-radius: 20px; padding: 0.15rem 0.4rem; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
+.reaction-chosen:hover { opacity: 0.7; }
+.reaction-trigger-wrap { position: relative; }
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 30px;
+  padding: 0.3rem 0.4rem;
+  display: flex;
+  gap: 0.2rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  z-index: 50;
+  white-space: nowrap;
+  animation: fadeUp 0.15s ease-out;
+}
+.reaction-picker button {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  border-radius: 8px;
+  transition: transform 0.15s;
+  line-height: 1;
+}
+.reaction-picker button:hover { transform: scale(1.3); background: var(--surface2); }
+
+/* ── Empty state date ── */
+.empty-date {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.3rem 0.85rem;
+  margin-top: -0.25rem;
+}

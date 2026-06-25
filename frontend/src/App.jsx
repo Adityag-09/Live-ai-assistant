@@ -1,7 +1,10 @@
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -79,7 +82,13 @@ const ALL_SUGGESTIONS = [
 const SUGGESTIONS = ALL_SUGGESTIONS.sort(() => Math.random() - 0.5).slice(0, 4)
 
 const formatTime = (date) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
+const getGreeting = () => {
+  const hour = new Date().getHours()
+  if (hour < 12) return { text: 'Good morning', emoji: '☀️' }
+  if (hour < 17) return { text: 'Good afternoon', emoji: '👋' }
+  if (hour < 21) return { text: 'Good evening', emoji: '🌆' }
+  return { text: 'Good night', emoji: '🌙' }
+}
 const authAxios = (token) => axios.create({
   baseURL: API_URL,
   headers: { Authorization: `Bearer ${token}` },
@@ -257,7 +266,10 @@ function TypingDots() {
 // ── Message ───────────────────────────────────────────────
 function Message({ message, onRegenerate, isLast }) {
   const [copied, setCopied] = useState(false)
+  const [reaction, setReaction] = useState(null)
+  const [showReactions, setShowReactions] = useState(false)
   const isUser = message.role === 'user'
+  const REACTIONS = ['👍', '👎', '😂', '🤔', '❤️']
   const copyText = () => {
     navigator.clipboard.writeText(message.content)
     setCopied(true)
@@ -293,7 +305,30 @@ function Message({ message, onRegenerate, isLast }) {
               )}
             </div>
           )}
-          {isUser ? message.content : <ReactMarkdown>{message.content}</ReactMarkdown>}
+          {isUser ? message.content : (
+            <ReactMarkdown
+              components={{
+                code({ node, inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '')
+                  return !inline && match ? (
+                    <SyntaxHighlighter
+                      style={oneDark}
+                      language={match[1]}
+                      PreTag="div"
+                      customStyle={{ borderRadius: '8px', fontSize: '0.82rem', margin: '0.5rem 0' }}
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  ) : (
+                    <code className={className} {...props}>{children}</code>
+                  )
+                }
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
         </div>
         <div className="msg-footer">
           {message.timestamp && <span className="msg-time">{formatTime(message.timestamp)}</span>}
@@ -305,6 +340,28 @@ function Message({ message, onRegenerate, isLast }) {
               {isLast && onRegenerate && (
                 <button className="regen-btn" onClick={onRegenerate}>🔄 Retry</button>
               )}
+              <div className="reaction-wrap">
+                {reaction ? (
+                  <button className="reaction-chosen" onClick={() => setReaction(null)}>
+                    {reaction}
+                  </button>
+                ) : (
+                  <div className="reaction-trigger-wrap">
+                    <button className="reaction-trigger" onClick={() => setShowReactions(r => !r)}>
+                      🙂
+                    </button>
+                    {showReactions && (
+                      <div className="reaction-picker">
+                        {REACTIONS.map(r => (
+                          <button key={r} onClick={() => { setReaction(r); setShowReactions(false) }}>
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1003,7 +1060,7 @@ const copyShareLink = () => {
                   Sign In
                 </button>
               )} 
-              
+
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
@@ -1023,13 +1080,16 @@ const copyShareLink = () => {
 
           {messages.length === 0 && (
             <div className="empty-state">
-              <div className="empty-icon">✨</div>
-              <h2>Ask me anything</h2>
+              <div className="empty-icon">{getGreeting().emoji}</div>
+              <h2>{getGreeting().text}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}!</h2>
               <p>
                 {isGuest
-                  ? 'You\'re in guest mode. Sign in to save your chat history!'
-                  : 'I search the web for real-time answers and reply in your language automatically.'}
+                  ? '👤 Guest mode — chats not saved. Sign in to keep your history!'
+                  : "I'm Aura. I search the web, read files, and reply in your language."}
               </p>
+              <div className="empty-date">
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              </div>
               <div className="suggestions">
                 {SUGGESTIONS.map((s, i) => (
                   <button key={i} className="suggestion-chip" onClick={() => sendMessage(s.text)}>
@@ -1057,8 +1117,14 @@ const copyShareLink = () => {
                 </svg>
               </div>
               <div className="msg-bubble msg-bubble--ai msg-bubble--loading">
-                {serverWaking ? <span className="searching-text">⏳ Waking up server...</span>
-                  : <TypingDots />}
+                {serverWaking
+                  ? <span className="searching-text">⏳ Waking up server...</span>
+                  : searching
+                  ? <span className="searching-text">🔍 Searching the web...</span>
+                  : attachedFile
+                  ? <span className="searching-text">📄 Reading your file...</span>
+                  : <span className="searching-text">✨ Thinking...</span>
+                }
               </div>
             </div>
           )}
