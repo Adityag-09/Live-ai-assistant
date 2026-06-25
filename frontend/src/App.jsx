@@ -467,6 +467,10 @@ export default function App() {
   const [guestMessageCount, setGuestMessageCount] = useState(0)
   const [showNudge, setShowNudge] = useState(true)
   const [serverWaking, setServerWaking] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const lastUserMessageRef = useRef('')
@@ -486,6 +490,45 @@ export default function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  useEffect(() => {
+    const container = document.querySelector('.messages')
+    if (!container) return
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      setShowScrollBtn(scrollHeight - scrollTop - clientHeight > 150)
+    }
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setShowScrollBtn(false)
+  }
+  useEffect(() => {
+    if (showSearch) searchRef.current?.focus()
+  }, [showSearch])
+
+  useEffect(() => {
+    const handleKeyboard = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        handleNewChat()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        inputRef.current?.focus()
+      }
+      if (e.key === 'Escape') {
+        setShowSearch(false)
+        setSearchQuery('')
+        setShowExportMenu(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyboard)
+    return () => window.removeEventListener('keydown', handleKeyboard)
+  }, [])
 
   useEffect(() => {
     if (token) fetchSessions()
@@ -575,6 +618,7 @@ export default function App() {
   const sendMessage = async (text) => {
     const userMessage = (text || input).trim()
     if (!userMessage || loading) return
+    if (navigator.vibrate) navigator.vibrate(30)
 
     const lang = detectLanguage(userMessage)
     lastUserMessageRef.current = userMessage
@@ -1061,12 +1105,31 @@ const copyShareLink = () => {
                 </button>
               )} 
 
+              {messages.length > 0 && (
+                <button className="theme-toggle" onClick={() => setShowSearch(s => !s)} title="Search messages">
+                  🔍
+                </button>
+              )}
+
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
               <div className="status-dot"><span className="dot-pulse" />Online</div>
             </div>
           </div>
+          {showSearch && (
+            <div className="search-bar">
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Search messages..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="search-input"
+              />
+              <button onClick={() => { setShowSearch(false); setSearchQuery('') }}>✕</button>
+            </div>
+          )}
         </header>
 
         <main className="messages">
@@ -1100,14 +1163,21 @@ const copyShareLink = () => {
             </div>
           )}
 
-          {messages.map((msg, i) => (
-            <Message
-              key={i}
-              message={msg}
-              isLast={i === messages.length - 1}
-              onRegenerate={msg.role === 'assistant' ? handleRegenerate : null}
-            />
-          ))}
+          {messages
+            .filter(msg => !searchQuery || msg.content.toLowerCase().includes(searchQuery.toLowerCase()))
+            .map((msg, i) => (
+              <Message
+                key={i}
+                message={msg}
+                isLast={i === messages.length - 1}
+                onRegenerate={msg.role === 'assistant' ? handleRegenerate : null}
+              />
+            ))}
+          {searchQuery && messages.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: '2rem' }}>
+              No messages found for "{searchQuery}"
+            </div>
+          )}
 
           {loading && (
             <div className="msg-row msg-row--ai">
@@ -1186,8 +1256,20 @@ const copyShareLink = () => {
               {loading ? '⟳' : '➤'}
             </button>
           </form>
-          <div className="input-footer">Enter to send · Shift+Enter for new line</div>
+          <div className="input-footer">
+            Enter to send · Shift+Enter for new line
+            {input.length > 50 && (
+              <span className={`char-count ${input.length > 900 ? 'char-count--warn' : ''}`}>
+                {input.length}/1000
+              </span>
+            )}
+          </div>
         </footer>
+        {showScrollBtn && (
+          <button className="scroll-bottom-btn" onClick={scrollToBottom}>
+            ↓
+          </button>
+        )}
       </div>
     </div>
   )
