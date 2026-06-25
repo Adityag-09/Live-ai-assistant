@@ -693,8 +693,12 @@ export default function App() {
     if (!userMessage || loading) return
 
     // Image generation command
-    if (userMessage.toLowerCase().startsWith('/image ')) {
-      const prompt = userMessage.slice(7).trim()
+    const imageMatch = userMessage.match(/^\/image\s+(.+)/i) ||
+      userMessage.match(/^generate (?:an? )?image (?:of|about|showing)?\s*(.+)/i) ||
+      userMessage.match(/^create (?:an? )?image (?:of|about|showing)?\s*(.+)/i) ||
+      userMessage.match(/^draw (?:me )?(?:an? )?(.+)/i)
+    if (imageMatch) {
+      const prompt = imageMatch[1].trim()
       if (!prompt) return
       setInput('')
       setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp: new Date().toISOString() }])
@@ -1404,7 +1408,7 @@ const copyShareLink = () => {
             </button>
           </form>
           <div className="input-footer">
-            Enter to send · Shift+Enter for new line
+            Enter to send · Shift+Enter for new line · <span style={{color: 'var(--accent)'}}>type /image to generate images</span>
             {input.length > 50 && (
               <span className={`char-count ${input.length > 900 ? 'char-count--warn' : ''}`}>
                 {input.length}/1000
