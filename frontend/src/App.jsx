@@ -194,7 +194,7 @@ function AuthPage({ onAuth, darkMode, onGuestMode }) {
             <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
           </svg>
         </div>
-        <h1 className="auth-title">Live AI Assistant</h1>
+        <h1 className="auth-title">Aura</h1>
         <p className="auth-sub">{isLogin ? 'Welcome back!' : 'Create your account'}</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -414,6 +414,8 @@ export default function App() {
   const inputRef = useRef(null)
   const lastUserMessageRef = useRef('')
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [showInstall, setShowInstall] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef(null)
   const [attachedFile, setAttachedFile] = useState(null)
@@ -431,6 +433,24 @@ export default function App() {
   useEffect(() => {
     if (token) fetchSessions()
   }, [token])
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setShowInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setShowInstall(false)
+    setInstallPrompt(null)
+  }
 
   const fetchSessions = async () => {
     try {
@@ -943,7 +963,7 @@ const copyShareLink = () => {
                   </svg>
                 </div>
                 <div>
-                  <div className="header-title">Live AI Assistant</div>
+                  <div className="header-title">Aura</div>
                   <div className="header-sub">
                     {isGuest ? '👤 Guest Mode — chats not saved' : 'Powered by web search · speaks your language'}
                   </div>
@@ -972,11 +992,18 @@ const copyShareLink = () => {
                   )}
                 </div>
               )}
+              {showInstall && (
+                <button className="install-btn" onClick={handleInstall}>
+                  📲 Install
+                </button>
+              )}
+
               {isGuest && (
                 <button className="signin-header-btn" onClick={handleSignIn}>
                   Sign In
                 </button>
-              )}
+              )} 
+              
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>

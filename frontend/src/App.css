@@ -526,3 +526,14 @@ body {
   transition: background 0.15s;
 }
 .export-dropdown button:hover { background: var(--surface2); }
+.install-btn {
+  padding: 0.35rem 0.75rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}

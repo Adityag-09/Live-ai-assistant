@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<br><br>
+<button onclick="download()" style="padding:10px 20px;font-size:16px;cursor:pointer">
+  Download Icons
+</button>
+<script>
+function drawIcon(canvas) {
+  const s = canvas.width
+  const ctx = canvas.getContext('2d')
+  const bg = ctx.createLinearGradient(0, 0, s, s)
+  bg.addColorStop(0, '#0d0f14')
+  bg.addColorStop(1, '#1c2030')
+  ctx.fillStyle = bg
+  ctx.beginPath()
+  ctx.roundRect(0, 0, s, s, s * 0.22)
+  ctx.fill()
+  const glow = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s*0.4)
+  glow.addColorStop(0, 'rgba(79,143,255,0.3)')
+  glow.addColorStop(1, 'rgba(79,143,255,0)')
+  ctx.fillStyle = glow
+  ctx.beginPath()
+  ctx.arc(s/2, s/2, s*0.4, 0, Math.PI*2)
+  ctx.fill()
+  ctx.font = `bold ${s*0.52}px Arial`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const grad = ctx.createLinearGradient(0, s*0.25, 0, s*0.75)
+  grad.addColorStop(0, '#4f8fff')
+  grad.addColorStop(1, '#7b6ffc')
+  ctx.fillStyle = grad
+  ctx.fillText('A', s/2, s/2 + s*0.04)
+}
+
+function download() {
+  ['c192','c512'].forEach(id => {
+    const canvas = document.getElementById(id)
+    drawIcon(canvas)
+    const a = document.createElement('a')
+    a.download = `icon-${canvas.width}.png`
+    a.href = canvas.toDataURL('image/png')
+    a.click()
+  })
+}
+
+drawIcon(document.getElementById('c192'))
+drawIcon(document.getElementById('c512'))
+</script>
+</body>
+</html>
