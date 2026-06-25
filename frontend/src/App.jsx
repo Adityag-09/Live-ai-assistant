@@ -379,6 +379,10 @@ function Message({ message, onRegenerate, isLast }) {
 
 // ── Sidebar ───────────────────────────────────────────────
 function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDeleteSession, user, onLogout, darkMode, setDarkMode, open, setOpen, isGuest, onSignIn }) {
+  const [sidebarSearch, setSidebarSearch] = useState('')
+  const filteredSessions = sessions.filter(s =>
+    (s.title || '').toLowerCase().includes(sidebarSearch.toLowerCase())
+  )
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={() => setOpen(false)} />}
@@ -393,7 +397,21 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
         </div>
 
         <div className="sidebar-sessions">
-          <div className="sidebar-label">Recent Chats</div>
+          <div className="sidebar-label-row">
+            <span className="sidebar-label">Recent Chats</span>
+            {sessions.length > 0 && (
+              <span className="sidebar-badge">{sessions.length}</span>
+            )}
+          </div>
+          {sessions.length > 3 && (
+            <input
+              type="text"
+              className="sidebar-search"
+              placeholder="Search chats..."
+              value={sidebarSearch}
+              onChange={e => setSidebarSearch(e.target.value)}
+            />
+          )}
           {isGuest ? (
             <div className="sidebar-empty">
               <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔒</div>
@@ -407,7 +425,7 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
               <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', opacity: 0.7 }}>Start a conversation!</div>
             </div>
           ) : (
-            sessions.map(s => (
+            filteredSessions.map(s => (
               <div key={s.session_id}
                 className={`session-item ${s.session_id === currentSessionId ? 'session-item--active' : ''}`}
                 onClick={() => { onSelectSession(s.session_id); setOpen(false) }}
@@ -590,16 +608,20 @@ export default function App() {
     inputRef.current?.focus()
   }
 
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
   const handleSelectSession = async (sid) => {
+    setLoadingHistory(true)
+    setMessages([])
+    setSessionId(sid)
     try {
       const res = await authAxios(token).get(`/history/${sid}`)
       if (res.data.messages) {
         setMessages(res.data.messages.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp })))
-        setSessionId(sid)
       }
     } catch {}
+    finally { setLoadingHistory(false) }
   }
-
   const handleDeleteSession = async (sid) => {
     try {
       await authAxios(token).delete(`/history/${sid}`)
@@ -1176,6 +1198,16 @@ const copyShareLink = () => {
           {searchQuery && messages.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: '2rem' }}>
               No messages found for "{searchQuery}"
+            </div>
+          )}
+
+          {loadingHistory && (
+            <div className="skeleton-wrap">
+              {[1,2,3].map(i => (
+                <div key={i} className={`skeleton-row ${i % 2 === 0 ? 'skeleton-row--right' : ''}`}>
+                  <div className="skeleton-bubble" style={{ width: `${i === 2 ? 55 : i === 1 ? 75 : 65}%` }} />
+                </div>
+              ))}
             </div>
           )}
 
