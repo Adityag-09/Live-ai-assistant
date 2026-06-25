@@ -716,3 +716,108 @@ body {
 .translate-picker button { display: block; width: 100%; padding: 0.5rem 0.85rem; background: none; border: none; color: var(--text); font-size: 0.8rem; cursor: pointer; text-align: left; transition: background 0.15s; }
 .translate-picker button:hover { background: var(--surface2); }
 .msg-bubble--ai img { max-width: 100%; border-radius: 10px; margin-top: 0.5rem; display: block; }
+/* ── Persona picker ── */
+.persona-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  z-index: 100;
+  min-width: 200px;
+  overflow: hidden;
+  animation: fadeUp 0.15s ease-out;
+}
+.persona-picker-title {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding: 0.6rem 1rem 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.persona-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s;
+}
+.persona-option:hover { background: var(--surface2); }
+.persona-option--active { background: rgba(79,143,255,0.1); color: var(--accent); }
+
+/* ── Code block ── */
+.code-block-wrap {
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  background: #1a1b26;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.code-lang {
+  font-size: 0.72rem;
+  color: #7aa2f7;
+  font-family: monospace;
+  text-transform: lowercase;
+}
+.code-actions { display: flex; gap: 0.4rem; }
+.code-copy-btn {
+  font-size: 0.72rem;
+  color: #a9b1d6;
+  background: rgba(255,255,255,0.06);
+  border: none;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.code-copy-btn:hover { background: rgba(255,255,255,0.12); }
+.code-run-btn {
+  font-size: 0.72rem;
+  color: #fff;
+  background: #4ade80;
+  border: none;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+.code-run-btn:hover:not(:disabled) { opacity: 0.85; }
+.code-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.code-output {
+  background: #0d1117;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.code-output-label {
+  font-size: 0.68rem;
+  color: #4ade80;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.code-output--error .code-output-label { color: #f87171; }
+.code-output pre {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}

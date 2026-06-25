@@ -741,6 +741,7 @@ async def translate_text(request: TranslateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 import urllib.parse
+import urllib.request
 
 class ImageGenRequest(BaseModel):
     prompt: str
@@ -784,6 +785,92 @@ async def generate_image(request: ImageGenRequest, credentials: HTTPAuthorizatio
 
     return {"image_url": image_url, "prompt": prompt}
 
+class ScrapeRequest(BaseModel):
+    url: str
+
+@app.post("/scrape")
+async def scrape_url(request: ScrapeRequest):
+    url = request.url.strip()
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+
+        # Strip HTML tags simply
+        import re
+        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = text[:8000]  # Limit to 8000 chars
+
+        if len(text) < 100:
+            raise HTTPException(status_code=422, detail="Could not extract meaningful content from this URL.")
+
+        return {"content": text, "url": url, "chars": len(text)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not fetch URL: {str(e)}")
+
+class CodeRunRequest(BaseModel):
+    code: str
+    language: str  # "python" or "javascript"
+
+@app.post("/run-code")
+async def run_code(request: CodeRunRequest):
+    import subprocess
+    import tempfile
+
+    code = request.code.strip()
+    lang = request.language.lower()
+
+    # Safety: block dangerous patterns
+    blocked = ['import os', 'import sys', 'subprocess', 'eval(', 'exec(', '__import__',
+               'open(', 'file(', 'input(', 'rm ', 'del ', 'format(', 'shutil']
+    for b in blocked:
+        if b in code:
+            raise HTTPException(status_code=400, detail=f"Blocked pattern detected: '{b}'")
+
+    try:
+        if lang == "python":
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                f.write(code)
+                fname = f.name
+            result = subprocess.run(
+                ['python3', fname],
+                capture_output=True, text=True, timeout=5
+            )
+            import os
+            os.unlink(fname)
+            output = result.stdout or result.stderr or "(no output)"
+            return {"output": output[:2000], "language": "python", "error": bool(result.stderr)}
+
+        elif lang == "javascript":
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
+                f.write(code)
+                fname = f.name
+            result = subprocess.run(
+                ['node', fname],
+                capture_output=True, text=True, timeout=5
+            )
+            import os
+            os.unlink(fname)
+            output = result.stdout or result.stderr or "(no output)"
+            return {"output": output[:2000], "language": "javascript", "error": bool(result.stderr)}
+
+        else:
+            raise HTTPException(status_code=400, detail="Only python and javascript supported")
+
+    except subprocess.TimeoutExpired:
+        return {"output": "⏱️ Code timed out after 5 seconds.", "language": lang, "error": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}

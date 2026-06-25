@@ -104,6 +104,15 @@ const getFollowUpSuggestions = (content, userMsg) => {
     return ['🗺️ Best time to visit?', '💰 How much does it cost?', '🏨 Where to stay?']
   return ['💡 Tell me more', '🔍 Search for latest', '📋 Summarize this']
 }
+const PERSONAS = [
+  { id: 'default', name: 'Default', emoji: '✨', prompt: '' },
+  { id: 'expert', name: 'Expert', emoji: '🎓', prompt: 'You are a world-class expert. Give precise, authoritative, detailed answers with data and examples. Never dumb things down.' },
+  { id: 'friend', name: 'Friend', emoji: '😊', prompt: 'You are a warm, casual best friend. Use casual language, be supportive, add humor, use emojis naturally. Never be formal.' },
+  { id: 'teacher', name: 'Teacher', emoji: '📚', prompt: 'You are a patient teacher. Break everything into simple steps, use analogies, check for understanding, encourage the learner.' },
+  { id: 'coder', name: 'Coder', emoji: '💻', prompt: 'You are a senior software engineer. Always give working code examples, explain edge cases, mention best practices and performance. Prefer code over words.' },
+  { id: 'creative', name: 'Creative', emoji: '🎨', prompt: 'You are a wildly creative thinker. Give unexpected, imaginative, inspiring responses. Think outside the box. Use vivid language and metaphors.' },
+  { id: 'therapist', name: 'Therapist', emoji: '🧘', prompt: 'You are a compassionate therapist. Listen deeply, validate feelings, ask thoughtful questions, never judge. Focus on emotional support and clarity.' },
+]
 const authAxios = (token) => axios.create({
   baseURL: API_URL,
   headers: { Authorization: `Bearer ${token}` },
@@ -277,7 +286,68 @@ function AuthPage({ onAuth, darkMode, onGuestMode }) {
 function TypingDots() {
   return <div className="typing-dots"><span /><span /><span /></div>
 }
+// ── Code Block with Run button ────────────────────────────
+function CodeBlock({ language, code, isRunnable }) {
+  const [output, setOutput] = useState(null)
+  const [running, setRunning] = useState(false)
+  const [copied, setCopied] = useState(false)
 
+  const runCode = async () => {
+    setRunning(true)
+    setOutput(null)
+    try {
+      const lang = language.toLowerCase() === 'js' ? 'javascript' : language.toLowerCase()
+      const res = await fetch(`${API_URL}/run-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, language: lang })
+      })
+      const data = await res.json()
+      setOutput(data)
+    } catch {
+      setOutput({ output: '⚠️ Could not run code.', error: true })
+    }
+    setRunning(false)
+  }
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="code-block-wrap">
+      <div className="code-block-header">
+        <span className="code-lang">{language}</span>
+        <div className="code-actions">
+          <button className="code-copy-btn" onClick={copyCode}>
+            {copied ? '✓ Copied' : '⧉ Copy'}
+          </button>
+          {isRunnable && (
+            <button className="code-run-btn" onClick={runCode} disabled={running}>
+              {running ? '⏳ Running...' : '▶ Run'}
+            </button>
+          )}
+        </div>
+      </div>
+      <SyntaxHighlighter
+        style={oneDark}
+        language={language}
+        PreTag="div"
+        customStyle={{ borderRadius: '0 0 8px 8px', fontSize: '0.82rem', margin: 0 }}
+      >
+        {code}
+      </SyntaxHighlighter>
+      {output && (
+        <div className={`code-output ${output.error ? 'code-output--error' : ''}`}>
+          <div className="code-output-label">Output:</div>
+          <pre>{output.output}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
 // ── Message ───────────────────────────────────────────────
 function Message({ message, onRegenerate, isLast }) {
   const [copied, setCopied] = useState(false)
@@ -345,19 +415,20 @@ function Message({ message, onRegenerate, isLast }) {
               components={{
                 code({ node, inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '')
-                  return !inline && match ? (
-                    <SyntaxHighlighter
-                      style={oneDark}
-                      language={match[1]}
-                      PreTag="div"
-                      customStyle={{ borderRadius: '8px', fontSize: '0.82rem', margin: '0.5rem 0' }}
-                      {...props}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  ) : (
-                    <code className={className} {...props}>{children}</code>
-                  )
+                  const codeStr = String(children).replace(/\n$/, '')
+                  const isRunnable = match && ['python', 'javascript', 'js'].includes(match[1].toLowerCase())
+
+                  if (!inline && match) {
+                    return (
+                      <CodeBlock
+                        language={match[1]}
+                        code={codeStr}
+                        isRunnable={isRunnable}
+                        {...props}
+                      />
+                    )
+                  }
+                  return <code className={className} {...props}>{children}</code>
                 }
               }}
             >
@@ -522,6 +593,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [followUps, setFollowUps] = useState([])
   const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('customPrompt') || '')
+  const [activePersona, setActivePersona] = useState(() => localStorage.getItem('activePersona') || 'default')
+  const [showPersonaPicker, setShowPersonaPicker] = useState(false)
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'))
   const [messages, setMessages] = useState([])
@@ -702,6 +775,15 @@ export default function App() {
     else setDetectedLang('en')
   }
 
+  const handlePaste = (e) => {
+    const pasted = e.clipboardData.getData('text').trim()
+    if (pasted.match(/^https?:\/\/[^\s]+$/)) {
+      e.preventDefault()
+      setInput('')
+      handleScrapeUrl(pasted)
+    }
+  }
+
   const sendMessage = async (text) => {
     const userMessage = (text || input).trim()
     if (!userMessage || loading) return
@@ -784,7 +866,10 @@ export default function App() {
           file_type: attachedFile?.type || null,
           file_name: attachedFile?.name || null,
           mime_type: attachedFile?.mime || null,
-          custom_prompt: customPrompt || null,
+          custom_prompt: [
+            PERSONAS.find(p => p.id === activePersona)?.prompt || '',
+            customPrompt || ''
+          ].filter(Boolean).join('\n\n') || null,
         }),
       })
 
@@ -1089,6 +1174,43 @@ const copyShareLink = () => {
   alert('Share text copied to clipboard!')
   setShowExportMenu(false)
 }
+
+ const handleScrapeUrl = async (url) => {
+    if (!url) return
+    setLoading(true)
+    setMessages(prev => [...prev, {
+      role: 'user',
+      content: `🔗 Summarize this URL: ${url}`,
+      timestamp: new Date().toISOString()
+    }])
+    try {
+      const res = await fetch(`${API_URL}/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `⚠️ ${err.detail || 'Could not fetch that URL.'}`,
+          timestamp: new Date().toISOString()
+        }])
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
+      await sendMessage(`Please summarize and extract key information from this webpage content:\n\n${data.content}`)
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '⚠️ Could not fetch that URL. Make sure it\'s a valid public webpage.',
+        timestamp: new Date().toISOString()
+      }])
+      setLoading(false)
+    }
+  }
+
   const handleVoiceInput = () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!SpeechRecognition) {
@@ -1190,7 +1312,7 @@ const copyShareLink = () => {
                 <div>
                   <div className="header-title">Aura</div>
                   <div className="header-sub">
-                    {isGuest ? '👤 Guest Mode — chats not saved' : 'Powered by web search · speaks your language'}
+                    {isGuest ? '👤 Guest Mode — chats not saved' : activePersona !== 'default' ? `${PERSONAS.find(p => p.id === activePersona)?.emoji} ${PERSONAS.find(p => p.id === activePersona)?.name} mode` : 'Powered by web search · speaks your language'}
                   </div>
                 </div>
               </div>
@@ -1238,6 +1360,39 @@ const copyShareLink = () => {
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="theme-toggle"
+                  onClick={() => setShowPersonaPicker(p => !p)}
+                  title="Switch persona"
+                  style={{ fontSize: '1rem' }}
+                >
+                  {PERSONAS.find(p => p.id === activePersona)?.emoji || '✨'}
+                </button>
+                {showPersonaPicker && (
+                  <>
+                    <div className="export-overlay" onClick={() => setShowPersonaPicker(false)} />
+                    <div className="persona-picker">
+                      <div className="persona-picker-title">Choose Aura's Personality</div>
+                      {PERSONAS.map(p => (
+                        <button
+                          key={p.id}
+                          className={`persona-option ${activePersona === p.id ? 'persona-option--active' : ''}`}
+                          onClick={() => {
+                            setActivePersona(p.id)
+                            localStorage.setItem('activePersona', p.id)
+                            setShowPersonaPicker(false)
+                          }}
+                        >
+                          <span>{p.emoji}</span>
+                          <span>{p.name}</span>
+                          {activePersona === p.id && <span style={{ marginLeft: 'auto', color: 'var(--accent)' }}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <button className="theme-toggle" onClick={() => setShowSettings(s => !s)} title="Settings">
                 ⚙️
               </button>
@@ -1391,6 +1546,7 @@ const copyShareLink = () => {
               type="text" value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={input.startsWith('/image') ? '🎨 Describe the image to generate...' : PLACEHOLDERS[detectedLang] || PLACEHOLDERS.en}
               disabled={loading}
               className="input-field"
