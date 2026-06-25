@@ -20,36 +20,63 @@ import json
 from collections import defaultdict
 import time
 
-# ── Rate limiting ─────────────────────────────────────────
-rate_limit_store = defaultdict(lambda: {
-    'hourly': [],
-    'half_daily': [],
-})
+# ── Rate limiting (MongoDB-backed, survives restarts) ─────
 guest_message_counts = defaultdict(int)
 HOURLY_LIMIT = 30
 HALF_DAILY_LIMIT = 70
 GUEST_LIMIT = 10
 
-def check_rate_limit(user_id: str):
-    now = time.time()
-    store = rate_limit_store[user_id]
-    store['hourly'] = [t for t in store['hourly'] if now - t < 3600]
-    store['half_daily'] = [t for t in store['half_daily'] if now - t < 43200]
+async def check_rate_limit(user_id: str):
+    now = datetime.utcnow()
+    one_hour_ago = now - timedelta(hours=1)
+    twelve_hours_ago = now - timedelta(hours=12)
 
-    if len(store['hourly']) >= HOURLY_LIMIT:
-        reset_time = store['hourly'][0] + 3600
-        reset_str = datetime.fromtimestamp(reset_time).strftime('%I:%M %p')
-        raise HTTPException(status_code=429,
-            detail=f"⏳ Hourly limit reached (30/30 messages). Resets at {reset_str}.")
+    if db is not None:
+        rate_col = db["rate_limits"]
+        try:
+            # Count messages in last hour
+            hourly_count = await rate_col.count_documents({
+                "user_id": user_id,
+                "timestamp": {"$gte": one_hour_ago}
+            })
+            if hourly_count >= HOURLY_LIMIT:
+                oldest = await rate_col.find_one(
+                    {"user_id": user_id, "timestamp": {"$gte": one_hour_ago}},
+                    sort=[("timestamp", 1)]
+                )
+                reset_time = oldest["timestamp"] + timedelta(hours=1)
+                reset_str = reset_time.strftime('%I:%M %p')
+                raise HTTPException(status_code=429,
+                    detail=f"⏳ Hourly limit reached (30/30 messages). Resets at {reset_str}.")
 
-    if len(store['half_daily']) >= HALF_DAILY_LIMIT:
-        reset_time = store['half_daily'][0] + 43200
-        reset_str = datetime.fromtimestamp(reset_time).strftime('%I:%M %p')
-        raise HTTPException(status_code=429,
-            detail=f"🚫 Daily limit reached (70/70 messages). Your credits reset at {reset_str}.")
+            half_daily_count = await rate_col.count_documents({
+                "user_id": user_id,
+                "timestamp": {"$gte": twelve_hours_ago}
+            })
+            if half_daily_count >= HALF_DAILY_LIMIT:
+                oldest = await rate_col.find_one(
+                    {"user_id": user_id, "timestamp": {"$gte": twelve_hours_ago}},
+                    sort=[("timestamp", 1)]
+                )
+                reset_time = oldest["timestamp"] + timedelta(hours=12)
+                reset_str = reset_time.strftime('%I:%M %p')
+                raise HTTPException(status_code=429,
+                    detail=f"🚫 Daily limit reached (70/70 messages). Your credits reset at {reset_str}.")
 
-    store['hourly'].append(now)
-    store['half_daily'].append(now)
+            # Record this message
+            await rate_col.insert_one({"user_id": user_id, "timestamp": now})
+            # Clean up old records (older than 12 hours)
+            await rate_col.delete_many({
+                "user_id": user_id,
+                "timestamp": {"$lt": twelve_hours_ago}
+            })
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # If DB fails, allow the request
+    else:
+        # Fallback to in-memory if no DB
+        pass
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -351,7 +378,7 @@ async def chat(request: ChatRequest, current_user=Depends(get_current_user)) -> 
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
-    check_rate_limit(user_id)
+    await check_rate_limit(user_id)
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
@@ -406,7 +433,7 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["_id"]
     is_new_session = not request.session_id
-    check_rate_limit(user_id)
+    await check_rate_limit(user_id)
 
     history.append(Message(role="user", content=user_message))
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
@@ -715,13 +742,46 @@ async def translate_text(request: TranslateRequest):
 
 import urllib.parse
 
+class ImageGenRequest(BaseModel):
+    prompt: str
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+
 @app.post("/generate-image")
-async def generate_image(request: dict):
-    prompt = request.get("prompt", "").strip()
+async def generate_image(request: ImageGenRequest, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    prompt = request.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
     encoded = urllib.parse.quote(prompt)
     image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=512&height=512&nologo=true"
+
+    # Save to MongoDB if authenticated
+    if credentials and request.session_id and chats_collection is not None:
+        try:
+            payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
+            if user_id and request.session_id:
+                assistant_msg = f"🎨 **Generated image for:** \"{prompt}\"\n\n![{prompt}]({image_url})"
+                update = {
+                    "$push": {
+                        "messages": {
+                            "$each": [
+                                {"role": "user", "content": f"/image {prompt}", "timestamp": datetime.utcnow()},
+                                {"role": "assistant", "content": assistant_msg, "timestamp": datetime.utcnow()},
+                            ]
+                        }
+                    },
+                    "$set": {"updated_at": datetime.utcnow()},
+                    "$setOnInsert": {
+                        "created_at": datetime.utcnow(),
+                        "user_id": user_id,
+                        "title": f"Image: {prompt[:40]}",
+                    }
+                }
+                await chats_collection.update_one({"session_id": request.session_id}, update, upsert=True)
+        except Exception:
+            pass
+
     return {"image_url": image_url, "prompt": prompt}
 
 @app.api_route("/health", methods=["GET", "HEAD"])

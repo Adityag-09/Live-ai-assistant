@@ -1,5 +1,6 @@
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { lazy, Suspense } from 'react'
+const SyntaxHighlighter = lazy(() => import('react-syntax-highlighter').then(m => ({ default: m.Prism })))
+const oneDark = import('react-syntax-highlighter/dist/esm/styles/prism').then(m => m.oneDark)
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
@@ -600,7 +601,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (token) fetchSessions()
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        if (payload.exp * 1000 < Date.now()) {
+          handleLogout()
+          return
+        }
+      } catch {}
+      fetchSessions()
+    }
   }, [token])
 
   useEffect(() => {
@@ -625,7 +635,9 @@ export default function App() {
     try {
       const res = await authAxios(token).get('/sessions')
       setSessions(res.data.sessions || [])
-    } catch {}
+    } catch (err) {
+      if (err.response?.status === 401) handleLogout()
+    }
   }
 
   const handleAuth = (newToken, newUser) => {
@@ -670,7 +682,9 @@ export default function App() {
       if (res.data.messages) {
         setMessages(res.data.messages.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp })))
       }
-    } catch {}
+    } catch (err) {
+      if (err.response?.status === 401) handleLogout()
+    }
     finally { setLoadingHistory(false) }
   }
   const handleDeleteSession = async (sid) => {
@@ -706,8 +720,11 @@ export default function App() {
       try {
         const res = await fetch(`${API_URL}/generate-image`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt })
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ prompt, session_id: sessionId || null })
         })
         const data = await res.json()
         setMessages(prev => [...prev, {
@@ -719,6 +736,7 @@ export default function App() {
         setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Could not generate image. Try again.', timestamp: new Date().toISOString() }])
       }
       setLoading(false)
+      if (!isGuest) fetchSessions()
       return
     }
     if (navigator.vibrate) navigator.vibrate(30)
