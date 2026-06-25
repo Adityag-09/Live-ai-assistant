@@ -516,10 +516,10 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
     </>
   )
 }
-const [followUps, setFollowUps] = useState([])
 // ── Main App ──────────────────────────────────────────────
 export default function App() {
   const [showSettings, setShowSettings] = useState(false)
+  const [followUps, setFollowUps] = useState([])
   const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('customPrompt') || '')
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'))
