@@ -89,6 +89,20 @@ const getGreeting = () => {
   if (hour < 21) return { text: 'Good evening', emoji: '🌆' }
   return { text: 'Good night', emoji: '🌙' }
 }
+const getFollowUpSuggestions = (content, userMsg) => {
+  const text = (content + ' ' + userMsg).toLowerCase()
+  if (text.match(/code|function|error|bug|python|javascript|html|css/))
+    return ['🔍 Explain this further', '🐛 How to debug this?', '💡 Show me an example']
+  if (text.match(/news|latest|today|current|price|stock|bitcoin/))
+    return ['📰 Tell me more', '📊 Any related trends?', '🔄 What happened before this?']
+  if (text.match(/health|exercise|diet|fitness|food|recipe/))
+    return ['🥗 Give me more tips', '📋 Make a plan for me', '⚡ Quick version?']
+  if (text.match(/history|science|math|explain|what is|how does/))
+    return ['🧠 Go deeper', '📚 Give examples', '🎯 Simplify this']
+  if (text.match(/travel|place|country|city|visit/))
+    return ['🗺️ Best time to visit?', '💰 How much does it cost?', '🏨 Where to stay?']
+  return ['💡 Tell me more', '🔍 Search for latest', '📋 Summarize this']
+}
 const authAxios = (token) => axios.create({
   baseURL: API_URL,
   headers: { Authorization: `Bearer ${token}` },
@@ -268,6 +282,25 @@ function Message({ message, onRegenerate, isLast }) {
   const [copied, setCopied] = useState(false)
   const [reaction, setReaction] = useState(null)
   const [showReactions, setShowReactions] = useState(false)
+  const [translating, setTranslating] = useState(false)
+  const [translatedContent, setTranslatedContent] = useState(null)
+  const [showTranslatePicker, setShowTranslatePicker] = useState(false)
+  const TRANSLATE_LANGS = ['Hindi', 'French', 'Spanish', 'German', 'Arabic', 'Chinese', 'Japanese']
+
+  const handleTranslate = async (lang) => {
+    setShowTranslatePicker(false)
+    setTranslating(true)
+    try {
+      const res = await fetch(`${API_URL}/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message.content, target_language: lang })
+      })
+      const data = await res.json()
+      setTranslatedContent(data.translated)
+    } catch {}
+    setTranslating(false)
+  }
   const isUser = message.role === 'user'
   const REACTIONS = ['👍', '👎', '😂', '🤔', '❤️']
   const copyText = () => {
@@ -307,6 +340,7 @@ function Message({ message, onRegenerate, isLast }) {
           )}
           {isUser ? message.content : (
             <ReactMarkdown
+              key={translatedContent ? 'translated' : 'original'}
               components={{
                 code({ node, inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '')
@@ -326,7 +360,7 @@ function Message({ message, onRegenerate, isLast }) {
                 }
               }}
             >
-              {message.content}
+              {translatedContent || message.content}
             </ReactMarkdown>
           )}
         </div>
@@ -341,6 +375,21 @@ function Message({ message, onRegenerate, isLast }) {
                 <button className="regen-btn" onClick={onRegenerate}>🔄 Retry</button>
               )}
               <div className="reaction-wrap">
+                {!isUser && (
+                <div className="translate-wrap">
+                  <button className="translate-btn" onClick={() => setShowTranslatePicker(p => !p)} title="Translate">
+                    {translating ? '⏳' : '🌐'}
+                  </button>
+                  {showTranslatePicker && (
+                    <div className="translate-picker">
+                      {TRANSLATE_LANGS.map(l => (
+                        <button key={l} onClick={() => handleTranslate(l)}>{l}</button>
+                      ))}
+                      {translatedContent && <button onClick={() => setTranslatedContent(null)}>✕ Original</button>}
+                    </div>
+                  )}
+                </div>
+              )}
                 {reaction ? (
                   <button className="reaction-chosen" onClick={() => setReaction(null)}>
                     {reaction}
@@ -467,9 +516,11 @@ function Sidebar({ sessions, currentSessionId, onSelectSession, onNewChat, onDel
     </>
   )
 }
-
+const [followUps, setFollowUps] = useState([])
 // ── Main App ──────────────────────────────────────────────
 export default function App() {
+  const [showSettings, setShowSettings] = useState(false)
+  const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('customPrompt') || '')
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'))
   const [messages, setMessages] = useState([])
@@ -640,6 +691,32 @@ export default function App() {
   const sendMessage = async (text) => {
     const userMessage = (text || input).trim()
     if (!userMessage || loading) return
+
+    // Image generation command
+    if (userMessage.toLowerCase().startsWith('/image ')) {
+      const prompt = userMessage.slice(7).trim()
+      if (!prompt) return
+      setInput('')
+      setMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp: new Date().toISOString() }])
+      setLoading(true)
+      try {
+        const res = await fetch(`${API_URL}/generate-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        })
+        const data = await res.json()
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `🎨 **Generated image for:** "${prompt}"\n\n![${prompt}](${data.image_url})`,
+          timestamp: new Date().toISOString(),
+        }])
+      } catch {
+        setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Could not generate image. Try again.', timestamp: new Date().toISOString() }])
+      }
+      setLoading(false)
+      return
+    }
     if (navigator.vibrate) navigator.vibrate(30)
 
     const lang = detectLanguage(userMessage)
@@ -647,6 +724,7 @@ export default function App() {
     setInput('')
     setDetectedLang('en')
     setAttachedFile(null)
+    setFollowUps([])
 
     const langInstruction = lang !== 'en'
       ? `The user is writing in ${LANGUAGE_NAMES[lang]}. You MUST reply in ${LANGUAGE_NAMES[lang]} only.`
@@ -684,6 +762,7 @@ export default function App() {
           file_type: attachedFile?.type || null,
           file_name: attachedFile?.name || null,
           mime_type: attachedFile?.mime || null,
+          custom_prompt: customPrompt || null,
         }),
       })
 
@@ -761,6 +840,7 @@ export default function App() {
           const last = updated[updated.length - 1]
           if (last) {
             updated[updated.length - 1] = { ...last, streaming: false }
+            setFollowUps(getFollowUpSuggestions(last.content || '', userMessage))
           }
           return updated
         })
@@ -1136,9 +1216,35 @@ const copyShareLink = () => {
               <button className="theme-toggle" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
+              <button className="theme-toggle" onClick={() => setShowSettings(s => !s)} title="Settings">
+                ⚙️
+              </button>
               <div className="status-dot"><span className="dot-pulse" />Online</div>
             </div>
           </div>
+          {showSettings && (
+            <div className="settings-panel">
+              <div className="settings-header">
+                <span>⚙️ AI Personality</span>
+                <button onClick={() => setShowSettings(false)}>✕</button>
+              </div>
+              <textarea
+                className="settings-textarea"
+                placeholder="Customize how Aura behaves... e.g. 'You are a coding expert. Always give code examples. Be very concise.'"
+                value={customPrompt}
+                onChange={e => { setCustomPrompt(e.target.value); localStorage.setItem('customPrompt', e.target.value) }}
+                rows={4}
+              />
+              <div className="settings-footer">
+                <button className="settings-clear" onClick={() => { setCustomPrompt(''); localStorage.removeItem('customPrompt') }}>
+                  Reset to default
+                </button>
+                <button className="settings-save" onClick={() => setShowSettings(false)}>
+                  Save & Close
+                </button>
+              </div>
+            </div>
+          )}
           {showSearch && (
             <div className="search-bar">
               <input
@@ -1230,6 +1336,15 @@ const copyShareLink = () => {
               </div>
             </div>
           )}
+          {followUps.length > 0 && !loading && (
+            <div className="followup-chips">
+              {followUps.map((s, i) => (
+                <button key={i} className="followup-chip" onClick={() => { setFollowUps([]); sendMessage(s.replace(/^[^\s]+\s/, '')) }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </main>
 
@@ -1254,7 +1369,7 @@ const copyShareLink = () => {
               type="text" value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={PLACEHOLDERS[detectedLang] || PLACEHOLDERS.en}
+              placeholder={input.startsWith('/image') ? '🎨 Describe the image to generate...' : PLACEHOLDERS[detectedLang] || PLACEHOLDERS.en}
               disabled={loading}
               className="input-field"
               autoFocus

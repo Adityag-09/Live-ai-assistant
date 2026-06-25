@@ -125,6 +125,7 @@ class ChatRequest(BaseModel):
     file_type: Optional[str] = None
     file_name: Optional[str] = None
     mime_type: Optional[str] = None
+    custom_prompt: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -241,6 +242,18 @@ async def generate_title(user_msg: str) -> str:
         return res.choices[0].message.content.strip()[:60]
     except:
         return user_msg[:50]
+async def get_conversation_summary(history: list) -> str:
+    try:
+        conversation = "\n".join([f"{m.role.upper()}: {m.content[:200]}" for m in history])
+        res = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": f"Summarize this conversation in 3-4 sentences, capturing the key topics and conclusions:\n\n{conversation}"}],
+            temperature=0.3,
+            max_tokens=200,
+        )
+        return res.choices[0].message.content.strip()
+    except:
+        return ""
 
 # ── MongoDB helpers ───────────────────────────────────────
 async def save_to_mongo(session_id: str, user_id: str, user_msg: str, assistant_msg: str, lang: str, title: str = None):
@@ -293,9 +306,19 @@ async def chat_guest(request: ChatRequest) -> ChatResponse:
             detail="🔒 Guest limit reached (10 messages)! Sign up free → get 30/hour and 70 per 12 hours.")
 
     history.append(Message(role="user", content=user_message))
-    conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
+
+    # Auto-summarize after 20 messages to save tokens
+    if len(history) > 20:
+        summary = await get_conversation_summary(history[:-5])
+        recent = history[-5:]
+        conversation_text = f"[Earlier conversation summary]: {summary}\n\n[Recent messages]:\n"
+        conversation_text += "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in recent[:-1]])
+    else:
+        conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
     system_prompt = SYSTEM_PROMPT
+    if request.custom_prompt:
+        system_prompt += f"\n\nUSER CUSTOM RULES (follow these): {request.custom_prompt}"
     if lang_instruction:
         system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
 
@@ -389,9 +412,10 @@ async def chat_stream(request: ChatRequest, current_user=Depends(get_current_use
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
     system_prompt = SYSTEM_PROMPT
+    if request.custom_prompt:
+        system_prompt += f"\n\nUSER CUSTOM RULES (follow these): {request.custom_prompt}"
     if lang_instruction:
         system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
-
     is_searching = should_search(user_message)
     search_results = await run_search(user_message) if is_searching else ""
 
@@ -510,6 +534,8 @@ async def chat_guest_stream(request: ChatRequest):
     conversation_text = "\n".join([f"{msg.role.upper()}: {msg.content}" for msg in history[:-1]])
 
     system_prompt = SYSTEM_PROMPT
+    if request.custom_prompt:
+        system_prompt += f"\n\nUSER CUSTOM RULES (follow these): {request.custom_prompt}"
     if lang_instruction:
         system_prompt += f"\n\nLANGUAGE RULE (HIGHEST PRIORITY): {lang_instruction} Never ignore this rule."
 
@@ -669,7 +695,35 @@ async def upload_file(file: UploadFile = File(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
-    
+
+class TranslateRequest(BaseModel):
+    text: str
+    target_language: str
+
+@app.post("/translate")
+async def translate_text(request: TranslateRequest):
+    try:
+        res = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": f"Translate the following text to {request.target_language}. Reply with ONLY the translated text, nothing else:\n\n{request.text}"}],
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        return {"translated": res.choices[0].message.content.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+import urllib.parse
+
+@app.post("/generate-image")
+async def generate_image(request: dict):
+    prompt = request.get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    encoded = urllib.parse.quote(prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=512&height=512&nologo=true"
+    return {"image_url": image_url, "prompt": prompt}
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "mongodb": "connected" if mongo_client is not None else "not configured"}

@@ -698,3 +698,21 @@ body {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+.followup-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.25rem 0 0.5rem 36px; animation: fadeUp 0.2s ease-out; }
+.followup-chip { background: var(--surface); border: 1px solid rgba(79,143,255,0.3); border-radius: 100px; color: var(--accent); font-size: 0.78rem; padding: 0.35rem 0.85rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.followup-chip:hover { background: rgba(79,143,255,0.1); border-color: var(--accent); transform: translateY(-1px); }
+.settings-panel { border-top: 1px solid var(--border); padding: 1rem 1.5rem; background: var(--bg); animation: fadeUp 0.15s ease-out; }
+.settings-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; }
+.settings-header button { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.9rem; }
+.settings-textarea { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.82rem; padding: 0.65rem 0.85rem; outline: none; resize: none; font-family: inherit; line-height: 1.5; transition: border-color 0.2s; }
+.settings-textarea:focus { border-color: rgba(79,143,255,0.5); }
+.settings-footer { display: flex; justify-content: space-between; margin-top: 0.6rem; }
+.settings-clear { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim); font-size: 0.78rem; padding: 0.4rem 0.75rem; cursor: pointer; font-family: inherit; }
+.settings-save { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: 8px; color: #fff; font-size: 0.78rem; font-weight: 600; padding: 0.4rem 0.75rem; cursor: pointer; font-family: inherit; }
+.translate-wrap { position: relative; display: inline-flex; }
+.translate-btn { background: none; border: 1px solid var(--border); border-radius: 20px; padding: 0.15rem 0.4rem; font-size: 0.78rem; cursor: pointer; color: var(--text-dim); transition: all 0.2s; }
+.translate-btn:hover { border-color: var(--accent); }
+.translate-picker { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 50; overflow: hidden; min-width: 120px; animation: fadeUp 0.15s ease-out; }
+.translate-picker button { display: block; width: 100%; padding: 0.5rem 0.85rem; background: none; border: none; color: var(--text); font-size: 0.8rem; cursor: pointer; text-align: left; transition: background 0.15s; }
+.translate-picker button:hover { background: var(--surface2); }
+.msg-bubble--ai img { max-width: 100%; border-radius: 10px; margin-top: 0.5rem; display: block; }
