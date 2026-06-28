@@ -356,7 +356,7 @@ function Message({ message, onRegenerate, isLast }) {
   const [translating, setTranslating] = useState(false)
   const [translatedContent, setTranslatedContent] = useState(null)
   const [showTranslatePicker, setShowTranslatePicker] = useState(false)
-  const TRANSLATE_LANGS = ['Hindi', 'French', 'Spanish', 'German', 'Arabic', 'Chinese', 'Japanese']
+  const TRANSLATE_LANGS = ['English', 'Hindi', 'French', 'Spanish', 'German', 'Arabic', 'Chinese', 'Japanese']
 
   const handleTranslate = async (lang) => {
     setShowTranslatePicker(false)
@@ -1200,7 +1200,7 @@ const copyShareLink = () => {
         return
       }
       const data = await res.json()
-      await sendMessage(`Please summarize and extract key information from this webpage content:\n\n${data.content}`)
+      await sendMessage(`Please summarize and extract key information from this webpage content. Always reply in English regardless of the page language:\n\n${data.content}`)
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
