@@ -794,24 +794,16 @@ async def scrape_url(request: ScrapeRequest):
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        with urllib.request.urlopen(req, timeout=10) as response:
-            html = response.read().decode('utf-8', errors='ignore')
-
-        # Strip HTML tags simply
-        import re
-        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<[^>]+>', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = text[:8000]  # Limit to 8000 chars
-
-        if len(text) < 100:
-            raise HTTPException(status_code=422, detail="Could not extract meaningful content from this URL.")
-
-        return {"content": text, "url": url, "chars": len(text)}
+        # Use Tavily to extract content — handles anti-bot, JS sites, paywalls
+        response = tavily_client.extract(urls=[url])
+        if response and response.get('results') and len(response['results']) > 0:
+            content = response['results'][0].get('raw_content', '')
+            if not content or len(content) < 100:
+                raise HTTPException(status_code=422, detail="Could not extract meaningful content from this URL.")
+            content = content[:8000]
+            return {"content": content, "url": url, "chars": len(content)}
+        else:
+            raise HTTPException(status_code=422, detail="Could not extract content from this URL.")
     except HTTPException:
         raise
     except Exception as e:
