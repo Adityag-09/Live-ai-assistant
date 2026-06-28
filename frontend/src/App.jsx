@@ -1200,7 +1200,10 @@ const copyShareLink = () => {
         return
       }
       const data = await res.json()
-      await sendMessage(`Please summarize and extract key information from this webpage content. Always reply in English regardless of the page language:\n\n${data.content}`)
+      const prevLang = detectedLang
+      setDetectedLang('en')
+      await sendMessage(`Please summarize and extract key information from this webpage content. You MUST reply in English only, ignore any other language in the content:\n\n${data.content}`)
+      setDetectedLang(prevLang)
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
